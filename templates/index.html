@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Контрольна</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="landing-page">
+    <main class="center-shell">
+        <section class="glass-card start-card">
+            <div class="eyebrow">PYTHON CONTROL MODE</div>
+            <h1>Контрольна</h1>
+            <p class="subtitle">Серйозні питання. Несерйозний інтерфейс.</p>
+
+            {% if error %}
+                <div class="error-box">{{ error }}</div>
+            {% endif %}
+
+            <form action="{{ url_for('start') }}" method="post" class="start-form">
+                <label for="name">Ім'я та прізвище</label>
+                <input id="name" name="name" maxlength="80" autocomplete="off" placeholder="Наприклад: Оля Коваль" required>
+                <button class="primary-btn" type="submit">Почати</button>
+            </form>
+
+            <p class="microcopy">Після натискання кнопки назад дороги немає. Ну майже.</p>
+            <a class="admin-link" href="{{ url_for('admin') }}">Вхід для викладача</a>
+        </section>
+    </main>
+</body>
+</html>

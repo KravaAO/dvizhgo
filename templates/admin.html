@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin — контрольна</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="admin-page">
+{% if not authenticated %}
+    <main class="center-shell">
+        <section class="glass-card admin-login">
+            <div class="eyebrow">TEACHER MODE</div>
+            <h1>Вхід для викладача</h1>
+            {% if error %}<div class="error-box">{{ error }}</div>{% endif %}
+            <form method="post" class="start-form">
+                <label for="password">Пароль</label>
+                <input id="password" name="password" type="password" required>
+                <button class="primary-btn" type="submit">Увійти</button>
+            </form>
+        </section>
+    </main>
+{% else %}
+    <header class="admin-header">
+        <div>
+            <div class="eyebrow">TEACHER MODE</div>
+            <h1>Live результати</h1>
+        </div>
+        <div class="admin-actions">
+            <button id="openRoulette" class="primary-btn" type="button">🎡 Запустити рулетку</button>
+            <button id="resetResults" class="danger-btn">Очистити результати</button>
+            <form action="{{ url_for('admin_logout') }}" method="post">
+                <button class="secondary-btn" type="submit">Вийти</button>
+            </form>
+        </div>
+    </header>
+
+    <main class="admin-shell">
+        <section class="stats-grid">
+            <div class="stat-card"><span>Підключено</span><strong id="statConnected">0</strong></div>
+            <div class="stat-card"><span>Завершили</span><strong id="statFinished">0</strong></div>
+            <div class="stat-card"><span>Проходять</span><strong id="statActive">0</strong></div>
+        </section>
+
+        <section class="admin-panel">
+            <div class="roulette-admin-head">
+                <h2>🎡 Рулетка</h2>
+                <div class="admin-actions">
+                    <span id="rouletteAdminStatus" class="status-pill active">Немає активного раунду</span>
+                    <button id="closeRoulette" class="secondary-btn hidden" type="button">Завершити рулетку</button>
+                </div>
+            </div>
+            <div id="rouletteAdminBody" class="roulette-summary">Викладач вводить питання, а система обирає двох учнів, які ще проходять тест.</div>
+        </section>
+
+        <section class="admin-panel">
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Учень</th>
+                            <th>Пройдено</th>
+                            <th>Правильно</th>
+                            <th>Бал</th>
+                            <th>Час</th>
+                            <th>Статус</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resultsBody"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <section id="studentDetails" class="admin-panel hidden">
+            <div class="details-head">
+                <h2 id="detailsTitle">Учень</h2>
+                <button id="closeDetails" class="icon-btn">✕</button>
+            </div>
+            <div id="detailsBody"></div>
+        </section>
+    </main>
+
+    <div id="rouletteModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="rouletteModalTitle">
+        <section class="modal-card">
+            <h2 id="rouletteModalTitle">Нове питання для рулетки</h2>
+            <form id="rouletteForm" class="modal-form">
+                <label for="rouletteQuestionInput">Питання для двох обраних учнів</label>
+                <textarea id="rouletteQuestionInput" name="question" maxlength="1000" required placeholder="Наприклад: Поясніть, для чого потрібен git commit."></textarea>
+                <p id="rouletteFormError" class="microcopy"></p>
+                <div class="modal-actions">
+                    <button id="closeRouletteModal" class="secondary-btn" type="button">Скасувати</button>
+                    <button class="primary-btn" type="submit">Запустити</button>
+                </div>
+            </form>
+        </section>
+    </div>
+
+    <script>
+    const body = document.getElementById('resultsBody');
+    const details = document.getElementById('studentDetails');
+
+    function fmtTime(seconds) {
+        const s = Math.round(seconds || 0);
+        return `${String(Math.floor(s / 60)).padStart(2,'0')}:${String(s % 60).padStart(2,'0')}`;
+    }
+
+    async function loadResults() {
+        const res = await fetch('/api/admin/results');
+        if (!res.ok) return;
+        const data = await res.json();
+
+        document.getElementById('statConnected').textContent = data.connected;
+        document.getElementById('statFinished').textContent = data.finished;
+        document.getElementById('statActive').textContent = data.active;
+
+        body.innerHTML = '';
+        data.students.forEach(s => {
+            const tr = document.createElement('tr');
+            tr.className = 'student-row';
+            tr.innerHTML = `
+                <td>${escapeHtml(s.name)}</td>
+                <td>${s.answered}/${s.total}</td>
+                <td>${s.score}</td>
+                <td>${s.finished ? s.percent + '%' : '—'}</td>
+                <td>${fmtTime(s.total_time)}</td>
+                <td><span class="status-pill ${s.finished ? 'done' : 'active'}">${s.finished ? 'Готово' : 'В процесі'}</span></td>
+            `;
+            tr.addEventListener('click', () => loadStudent(s.id, s.name));
+            body.appendChild(tr);
+        });
+    }
+
+    function escapeHtml(value) {
+        return String(value).replace(/[&<>"']/g, ch => ({
+            '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'
+        })[ch]);
+    }
+
+    async function loadStudent(id, name) {
+        const res = await fetch(`/api/admin/student/${id}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        document.getElementById('detailsTitle').textContent = name;
+        const container = document.getElementById('detailsBody');
+        container.innerHTML = data.answers.length ? '' : '<p>Ще немає відповідей.</p>';
+
+        data.answers.forEach((a, i) => {
+            const item = document.createElement('div');
+            item.className = 'detail-item';
+            item.innerHTML = `
+                <div class="detail-top">
+                    <strong>${i + 1}. ${escapeHtml(a.question)}</strong>
+                    <span>${a.is_correct ? '✅' : '❌'} ${a.response_time}s</span>
+                </div>
+                <div><b>Обрано:</b> ${escapeHtml(a.selected.join(', '))}</div>
+                <div><b>Правильно:</b> ${escapeHtml(a.correct_answers.join(', '))}</div>
+            `;
+            container.appendChild(item);
+        });
+
+        details.classList.remove('hidden');
+    }
+
+    document.getElementById('closeDetails').addEventListener('click', () => details.classList.add('hidden'));
+
+    document.getElementById('resetResults').addEventListener('click', async () => {
+        if (!confirm('Точно очистити всі результати цієї контрольної?')) return;
+        const res = await fetch('/api/admin/reset', { method: 'POST' });
+        if (res.ok) {
+            details.classList.add('hidden');
+            loadResults();
+        }
+    });
+
+    const rouletteModal = document.getElementById('rouletteModal');
+    const rouletteForm = document.getElementById('rouletteForm');
+    const rouletteAdminBody = document.getElementById('rouletteAdminBody');
+    const rouletteAdminStatus = document.getElementById('rouletteAdminStatus');
+    const closeRouletteButton = document.getElementById('closeRoulette');
+
+    function renderAdminRoulette(round) {
+        if (!round) {
+            closeRouletteButton.classList.add('hidden');
+            rouletteAdminStatus.textContent = 'Немає активного раунду';
+            rouletteAdminStatus.className = 'status-pill active';
+            rouletteAdminBody.textContent = 'Викладач вводить питання, а система обирає двох учнів, які ще проходять тест.';
+            return;
+        }
+
+        const isVoting = round.status === 'voting';
+        closeRouletteButton.classList.remove('hidden');
+        rouletteAdminStatus.textContent = isVoting ? 'Голосування' : 'Учні відповідають';
+        rouletteAdminStatus.className = `status-pill ${isVoting ? 'done' : 'active'}`;
+        const participants = round.participants.map(participant => `
+            <div class="roulette-answer">
+                <strong>${escapeHtml(participant.name)} · 👍 ${participant.votes}</strong>
+                <p>${participant.answer_text ? escapeHtml(participant.answer_text) : 'Ще готує відповідь…'}</p>
+            </div>
+        `).join('');
+        rouletteAdminBody.innerHTML = `
+            <p><strong>Питання:</strong> ${escapeHtml(round.question)}</p>
+            <p><strong>Учасники:</strong> ${round.participants.map(p => escapeHtml(p.name)).join(' та ')}</p>
+            <div class="roulette-answer-list">${participants}</div>
+        `;
+    }
+
+    async function loadAdminRoulette() {
+        const res = await fetch('/api/admin/roulette');
+        if (!res.ok) return;
+        const data = await res.json();
+        renderAdminRoulette(data.round);
+    }
+
+    document.getElementById('openRoulette').addEventListener('click', () => {
+        document.getElementById('rouletteFormError').textContent = '';
+        rouletteModal.classList.remove('hidden');
+        document.getElementById('rouletteQuestionInput').focus();
+    });
+
+    document.getElementById('closeRouletteModal').addEventListener('click', () => {
+        rouletteModal.classList.add('hidden');
+    });
+
+    closeRouletteButton.addEventListener('click', async () => {
+        if (!confirm('Завершити рулетку та повернути всіх учнів до тесту?')) return;
+        const res = await fetch('/api/admin/roulette/close', { method: 'POST' });
+        if (res.ok) loadAdminRoulette();
+    });
+
+    rouletteForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        const question = rouletteForm.elements.question.value.trim();
+        const errorBox = document.getElementById('rouletteFormError');
+        errorBox.textContent = '';
+        const res = await fetch('/api/admin/roulette', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ question })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            errorBox.textContent = data.error || 'Не вдалося запустити рулетку.';
+            return;
+        }
+        rouletteForm.reset();
+        rouletteModal.classList.add('hidden');
+        renderAdminRoulette(data.round);
+    });
+
+    loadResults();
+    loadAdminRoulette();
+    setInterval(loadResults, 3000);
+    setInterval(loadAdminRoulette, 3000);
+    </script>
+{% endif %}
+</body>
+</html>

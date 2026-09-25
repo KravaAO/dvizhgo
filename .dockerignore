@@ -1,0 +1,8 @@
+.git
+__pycache__
+*.pyc
+quiz.db
+*.db-shm
+*.db-wal
+.env
+venv

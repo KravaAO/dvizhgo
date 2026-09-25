@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Контрольна</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="quiz-page"
+      data-question='{{ question|tojson }}'
+      data-question-number="{{ question_number }}"
+      data-total-questions="{{ total_questions }}">
+
+    <header class="topbar">
+        <div>
+            <div class="student-name">{{ student_name }}</div>
+            <div id="progressLabel" class="progress-label">
+                Виконано: {{ question_number - 1 }} · Завдання {{ question_number }} / 67
+            </div>
+        </div>
+        <button id="soundToggle" class="icon-btn" aria-label="Звук">🔊</button>
+    </header>
+
+    <div class="progress-track">
+        <div class="progress-fill" style="width: {{ (question_number - 1) / total_questions * 100 }}%"></div>
+    </div>
+
+    <main class="quiz-shell">
+        <div id="reactionToast" class="reaction-toast" aria-live="polite"></div>
+
+        <section id="questionCard" class="question-card">
+            <div class="question-meta">
+                <span class="question-chip">{{ question.type }}</span>
+                {% if question.difficulty %}
+                    <span class="difficulty">{{ question.difficulty }}</span>
+                {% endif %}
+            </div>
+
+            <h1>{{ question.question }}</h1>
+
+            {% if question.code %}
+                <pre class="code-block"><code>{{ question.code }}</code></pre>
+            {% endif %}
+
+            <div id="answers" class="answers-grid">
+                {% for answer in question.answers %}
+                    <button
+                        class="answer-option"
+                        data-index="{{ answer.original_index }}"
+                        type="button"
+                    >
+                        <span class="answer-dot"></span>
+                        <span>{{ answer.text }}</span>
+                    </button>
+                {% endfor %}
+            </div>
+
+            <div class="card-footer">
+                <span id="comboLabel" class="combo-label"></span>
+                <button id="submitAnswer" class="primary-btn" type="button" disabled>Відповісти</button>
+            </div>
+        </section>
+    </main>
+
+    <div id="characterLayer" class="character-layer" aria-hidden="true"></div>
+    <div id="rainLayer" class="rain-layer" aria-hidden="true"></div>
+
+    <section id="rouletteOverlay" class="roulette-overlay hidden" aria-live="polite">
+        <div class="roulette-card">
+            <div class="eyebrow">LIVE ROULETTE</div>
+            <h2>🎡 Рулетка викладача</h2>
+            <div class="roulette-wheel-shell" aria-label="Рулетка обирає учнів">
+                <div id="rouletteWheel" class="roulette-wheel" aria-hidden="true"></div>
+                <span class="roulette-pointer" aria-hidden="true">▼</span>
+                <strong id="rouletteWheelName" class="roulette-wheel-name">Обираємо учнів…</strong>
+            </div>
+            <p id="rouletteQuestion" class="roulette-question"></p>
+            <div id="rouletteParticipants" class="roulette-participants"></div>
+            <div id="rouletteAction"></div>
+            <p id="rouletteNotice" class="microcopy"></p>
+        </div>
+    </section>
+
+    <script src="{{ url_for('static', filename='js/quiz.js') }}"></script>
+</body>
+</html>

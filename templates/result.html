@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Результат</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="result-page">
+    <main class="center-shell">
+        <section class="glass-card result-card">
+            <div class="eyebrow">CONTROL COMPLETE</div>
+            <h1>Контрольну завершено</h1>
+            <div class="score-big">{{ score }} / {{ total }}</div>
+            <div class="percent">{{ percent }}%</div>
+            <div class="rank">{{ rank }}</div>
+
+            <div class="result-grid">
+                <div><span>Правильних</span><strong>{{ score }}</strong></div>
+                <div><span>Помилок</span><strong>{{ total - score }}</strong></div>
+                <div><span>Час</span><strong>{{ total_time }}</strong></div>
+            </div>
+
+            {% if percent == 100 %}
+                <div class="final-meme">Підозріло ідеально. Python схвалює.</div>
+            {% endif %}
+
+            <a class="secondary-btn" href="{{ url_for('index') }}">На головну</a>
+        </section>
+    </main>
+</body>
+</html>

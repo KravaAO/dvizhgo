@@ -1,0 +1,110 @@
+[
+  {
+    "id": 1,
+    "type": "single",
+    "question": "Що таке Django?",
+    "answers": ["Вебфреймворк для Python", "Операційна система", "База даних", "Браузер"],
+    "correct": [0],
+    "explanation": "Django — вебфреймворк для створення сайтів на Python.",
+    "difficulty": "easy"
+  },
+  {
+    "id": 2,
+    "type": "single",
+    "question": "Яка команда створює новий Django-проєкт?",
+    "answers": ["django-admin startproject mysite", "django new mysite", "python create django", "git startproject mysite"],
+    "correct": [0],
+    "explanation": "Команда django-admin startproject створює каркас проєкту.",
+    "difficulty": "easy"
+  },
+  {
+    "id": 3,
+    "type": "single",
+    "question": "Яка команда створює застосунок у Django-проєкті?",
+    "answers": ["python manage.py startapp blog", "python manage.py runserver", "django-admin startproject blog", "git init blog"],
+    "correct": [0],
+    "explanation": "startapp створює новий Django-застосунок.",
+    "difficulty": "easy"
+  },
+  {
+    "id": 4,
+    "type": "true_false",
+    "question": "Команда python manage.py runserver запускає локальний Django-сервер.",
+    "answers": ["Правда", "Неправда"],
+    "correct": [0],
+    "explanation": "runserver запускає сервер для локальної розробки.",
+    "difficulty": "easy"
+  },
+  {
+    "id": 5,
+    "type": "single",
+    "question": "У якому файлі Django зберігають список URL-маршрутів?",
+    "answers": ["urls.py", "models.py", "settings.py", "README.md"],
+    "correct": [0],
+    "explanation": "Маршрути зазвичай описують у файлі urls.py.",
+    "difficulty": "easy"
+  },
+  {
+    "id": 6,
+    "type": "single",
+    "question": "Яка команда створює новий Git-репозиторій у поточній папці?",
+    "answers": ["git init", "git start", "git create", "git new"],
+    "correct": [0],
+    "explanation": "git init ініціалізує репозиторій.",
+    "difficulty": "easy"
+  },
+  {
+    "id": 7,
+    "type": "single",
+    "question": "Яка команда показує стан файлів у Git?",
+    "answers": ["git status", "git check", "git files", "git showall"],
+    "correct": [0],
+    "explanation": "git status показує змінені, нові та підготовлені файли.",
+    "difficulty": "easy"
+  },
+  {
+    "id": 8,
+    "type": "single",
+    "question": "Яка команда додає всі поточні зміни до підготовки коміту?",
+    "answers": ["git add .", "git commit .", "git push .", "git save ."],
+    "correct": [0],
+    "explanation": "git add . додає зміни до staging area.",
+    "difficulty": "easy"
+  },
+  {
+    "id": 9,
+    "type": "single",
+    "question": "Яка команда створює коміт із повідомленням?",
+    "answers": ["git commit -m \"повідомлення\"", "git add -m \"повідомлення\"", "git push -m \"повідомлення\"", "git init -m \"повідомлення\""],
+    "correct": [0],
+    "explanation": "git commit -m створює коміт і додає до нього повідомлення.",
+    "difficulty": "easy"
+  },
+  {
+    "id": 10,
+    "type": "single",
+    "question": "Для чого потрібен файл .gitignore?",
+    "answers": ["Щоб Git не відстежував вказані файли", "Щоб видалити репозиторій", "Щоб створити коміт", "Щоб завантажити зміни на GitHub"],
+    "correct": [0],
+    "explanation": ".gitignore містить файли та папки, які Git має ігнорувати.",
+    "difficulty": "easy"
+  },
+  {
+    "id": 11,
+    "type": "single",
+    "question": "Яка команда створює нові файли міграцій Django?",
+    "answers": ["python manage.py makemigrations", "python manage.py migrate", "python manage.py runserver", "django-admin startapp"],
+    "correct": [0],
+    "explanation": "makemigrations створює файли міграцій на основі змін у моделях.",
+    "difficulty": "easy"
+  },
+  {
+    "id": 12,
+    "type": "single",
+    "question": "Яка команда копіює віддалений Git-репозиторій на комп’ютер?",
+    "answers": ["git clone", "git copy", "git download", "git fetch-file"],
+    "correct": [0],
+    "explanation": "git clone створює локальну копію віддаленого репозиторію.",
+    "difficulty": "easy"
+  }
+]
