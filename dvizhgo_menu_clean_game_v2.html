@@ -1,0 +1,742 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DvizhGo</title>
+<style>
+:root{
+  --paper:#eee7d9;
+  --ink:#171714;
+  --signal:#ff5a36;
+  --petrol:#164d4b;
+  --chalk:#f8f3e9;
+  --faded:#746e63;
+}
+*{box-sizing:border-box}
+html,body{
+  margin:0;
+  min-height:100%;
+  background:var(--paper);
+  color:var(--ink);
+  font-family:Arial,Helvetica,sans-serif;
+}
+body{overflow-x:hidden}
+button,input{font:inherit}
+
+.page{
+  min-height:100vh;
+  display:grid;
+  grid-template-rows:86px 1fr 54px;
+  position:relative;
+  isolation:isolate;
+  background:
+    linear-gradient(rgba(23,23,20,.032) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(23,23,20,.032) 1px,transparent 1px),
+    var(--paper);
+  background-size:32px 32px;
+}
+
+/* subtle paper texture */
+.page:before{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  z-index:-2;
+  opacity:.28;
+  background:
+    radial-gradient(circle at 20% 30%,rgba(0,0,0,.035),transparent 20%),
+    radial-gradient(circle at 80% 70%,rgba(0,0,0,.025),transparent 18%);
+}
+
+/* ---------- header ---------- */
+.header{
+  border-bottom:2px solid var(--ink);
+  display:grid;
+  grid-template-columns:auto 1fr auto;
+  align-items:center;
+  gap:26px;
+  padding:0 24px;
+}
+
+.logo{
+  display:flex;
+  align-items:center;
+  gap:0;
+  font-weight:1000;
+  font-size:26px;
+  letter-spacing:-.075em;
+  line-height:1;
+}
+
+.logo-dvizh{
+  padding:7px 8px 7px 0;
+}
+
+.logo-go{
+  display:inline-block;
+  padding:7px 9px 8px;
+  background:var(--ink);
+  color:var(--paper);
+  transform:rotate(-2deg);
+  box-shadow:4px 4px 0 var(--signal);
+  margin-left:2px;
+}
+
+
+.header-nav{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  justify-content:center;
+}
+
+.nav-link{
+  color:var(--ink);
+  text-decoration:none;
+  font:800 11px/1 "Courier New",monospace;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+  padding:11px 12px;
+  border:1px solid transparent;
+  transition:.16s ease;
+}
+
+.nav-link:hover{
+  border-color:var(--ink);
+  background:var(--ink);
+  color:var(--paper);
+  transform:translateY(-1px);
+}
+
+.header-right{
+  display:flex;
+  align-items:center;
+  gap:16px;
+  font:800 11px/1 "Courier New",monospace;
+  text-transform:uppercase;
+  letter-spacing:.14em;
+}
+
+.live{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.live-dot{
+  width:9px;
+  height:9px;
+  border-radius:50%;
+  background:var(--signal);
+  animation:blink 1.2s steps(1,end) infinite;
+}
+
+@keyframes blink{50%{opacity:.18}}
+
+/* ---------- main ---------- */
+.main{
+  min-height:0;
+  display:grid;
+  grid-template-columns:minmax(0,1.15fr) minmax(380px,.85fr);
+}
+
+/* left visual playground */
+.visual{
+  position:relative;
+  min-height:640px;
+  border-right:2px solid var(--ink);
+  overflow:hidden;
+  display:grid;
+  place-items:center;
+}
+
+/* giant background word, more graphic than informational */
+.word{
+  position:absolute;
+  left:5%;
+  top:8%;
+  font-size:clamp(72px,12vw,170px);
+  line-height:.78;
+  letter-spacing:-.095em;
+  font-weight:1000;
+  text-transform:uppercase;
+  opacity:.94;
+  user-select:none;
+}
+
+.word .go{
+  display:inline-block;
+  background:var(--ink);
+  color:var(--paper);
+  padding:.06em .09em .08em;
+  transform:rotate(-2deg);
+  box-shadow:.045em .045em 0 var(--signal);
+}
+
+/* playful orbit lines */
+.orbit{
+  position:absolute;
+  width:58vw;
+  height:58vw;
+  max-width:780px;
+  max-height:780px;
+  min-width:450px;
+  min-height:450px;
+  border:2px solid var(--ink);
+  border-radius:50%;
+  opacity:.14;
+  animation:orbitFloat 8s ease-in-out infinite alternate;
+}
+.orbit.o2{
+  width:39vw;
+  height:39vw;
+  max-width:520px;
+  max-height:520px;
+  min-width:310px;
+  min-height:310px;
+  border-style:dashed;
+  animation-delay:-3s;
+  opacity:.11;
+}
+@keyframes orbitFloat{
+  from{transform:translate(-3%,2%) rotate(-2deg)}
+  to{transform:translate(4%,-3%) rotate(3deg)}
+}
+
+/* emoji event */
+.emoji-stage{
+  position:relative;
+  width:240px;
+  height:240px;
+  display:grid;
+  place-items:center;
+  z-index:3;
+}
+
+.emoji{
+  position:absolute;
+  font-size:112px;
+  line-height:1;
+  opacity:0;
+  transform:scale(.45) rotate(-18deg);
+  filter:grayscale(.05);
+  animation:emojiPop 9s cubic-bezier(.2,.8,.2,1) infinite;
+}
+
+.emoji:nth-child(2){animation-delay:3s}
+.emoji:nth-child(3){animation-delay:6s}
+
+@keyframes emojiPop{
+  0%,25%{opacity:0;transform:scale(.45) rotate(-18deg)}
+  30%{opacity:1;transform:scale(1.12) rotate(5deg)}
+  36%,53%{opacity:1;transform:scale(1) rotate(0)}
+  60%{opacity:0;transform:scale(.8) rotate(10deg)}
+  100%{opacity:0}
+}
+
+/* small decorative markers */
+.cross,.dotmark,.slash{
+  position:absolute;
+  z-index:2;
+}
+.cross{
+  width:34px;height:34px;
+  right:12%;top:22%;
+}
+.cross:before,.cross:after{
+  content:"";
+  position:absolute;
+  left:15px;top:0;
+  width:3px;height:34px;
+  background:var(--signal);
+}
+.cross:after{transform:rotate(90deg)}
+
+.dotmark{
+  width:18px;height:18px;
+  border-radius:50%;
+  left:14%;bottom:18%;
+  background:var(--petrol);
+  box-shadow:34px 0 0 var(--signal),68px 0 0 var(--ink);
+}
+
+.slash{
+  width:110px;height:12px;
+  right:10%;bottom:13%;
+  background:var(--signal);
+  transform:rotate(-14deg);
+}
+
+/* ---------- room actions ---------- */
+.control{
+  min-height:640px;
+  background:var(--chalk);
+  display:grid;
+  grid-template-rows:1fr 1fr;
+}
+
+.room-action{
+  appearance:none;
+  border:0;
+  border-bottom:2px solid var(--ink);
+  background:transparent;
+  color:var(--ink);
+  text-align:left;
+  padding:36px;
+  cursor:pointer;
+  position:relative;
+  overflow:hidden;
+  transition:.18s ease;
+}
+
+.room-action:last-child{border-bottom:0}
+
+.room-action:before{
+  content:"";
+  position:absolute;
+  inset:0;
+  background:var(--ink);
+  transform:translateX(-101%);
+  transition:.24s cubic-bezier(.2,.8,.2,1);
+  z-index:0;
+}
+
+.room-action:hover:before,
+.room-action.active:before{
+  transform:translateX(0);
+}
+
+.room-action>*{
+  position:relative;
+  z-index:1;
+}
+
+.room-action:hover,
+.room-action.active{
+  color:var(--chalk);
+}
+
+.mode-num{
+  font:800 11px/1 "Courier New",monospace;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  opacity:.55;
+}
+
+.mode-title{
+  margin-top:14px;
+  max-width:360px;
+  font-size:clamp(42px,5vw,72px);
+  line-height:.86;
+  font-weight:1000;
+  letter-spacing:-.075em;
+  text-transform:uppercase;
+}
+
+.arrow{
+  position:absolute;
+  right:28px;
+  bottom:24px;
+  font-size:32px;
+  transition:.18s;
+}
+
+.room-action:hover .arrow{
+  transform:translateX(7px);
+}
+
+/* ---------- side panel ---------- */
+.panel{
+  position:fixed;
+  z-index:20;
+  right:0;
+  top:86px;
+  bottom:54px;
+  width:min(520px,100vw);
+  background:var(--petrol);
+  color:var(--chalk);
+  border-left:2px solid var(--ink);
+  transform:translateX(102%);
+  transition:.28s cubic-bezier(.2,.8,.2,1);
+  display:flex;
+  flex-direction:column;
+}
+
+.panel.open{transform:translateX(0)}
+
+.panel-top{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:23px 26px;
+  border-bottom:1px solid rgba(248,243,233,.22);
+}
+
+.panel-kicker{
+  font:800 11px/1 "Courier New",monospace;
+  text-transform:uppercase;
+  letter-spacing:.16em;
+}
+
+.close{
+  border:0;
+  background:transparent;
+  color:var(--chalk);
+  font-size:26px;
+  cursor:pointer;
+}
+
+.panel-body{
+  padding:34px 26px;
+  display:flex;
+  flex-direction:column;
+  flex:1;
+}
+
+.panel h2{
+  margin:0;
+  font-size:58px;
+  line-height:.88;
+  letter-spacing:-.075em;
+  text-transform:uppercase;
+}
+
+.panel p{
+  margin:14px 0 26px;
+  color:rgba(248,243,233,.63);
+  line-height:1.45;
+  max-width:390px;
+}
+
+.label{
+  display:block;
+  margin:18px 0 8px;
+  font:800 10px/1 "Courier New",monospace;
+  text-transform:uppercase;
+  letter-spacing:.16em;
+  color:rgba(248,243,233,.55);
+}
+
+.input{
+  width:100%;
+  height:62px;
+  border:0;
+  border-bottom:2px solid rgba(248,243,233,.72);
+  background:transparent;
+  color:var(--chalk);
+  outline:none;
+  border-radius:0;
+  padding:0 0 6px;
+  font-size:24px;
+  font-weight:800;
+}
+
+.input::placeholder{color:rgba(248,243,233,.24)}
+
+.input.code{
+  text-transform:uppercase;
+  letter-spacing:.18em;
+  font-family:"Courier New",monospace;
+  font-size:30px;
+}
+
+.primary{
+  margin-top:auto;
+  height:64px;
+  border:2px solid var(--chalk);
+  background:var(--signal);
+  color:var(--ink);
+  font-weight:1000;
+  text-transform:uppercase;
+  cursor:pointer;
+  box-shadow:6px 6px 0 var(--chalk);
+  transition:.16s;
+}
+
+.primary:hover{
+  transform:translate(-2px,-2px);
+  box-shadow:10px 10px 0 var(--chalk);
+}
+
+.mode-select{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  margin-top:4px;
+}
+
+.pill{
+  border:1px solid rgba(248,243,233,.42);
+  background:transparent;
+  color:var(--chalk);
+  padding:9px 12px;
+  cursor:pointer;
+  border-radius:0;
+  font:800 11px/1 "Courier New",monospace;
+  text-transform:uppercase;
+}
+
+.pill.active{
+  background:var(--chalk);
+  color:var(--petrol);
+}
+
+
+.instant-room{
+  margin-top:24px;
+  display:flex;
+  align-items:center;
+  gap:14px;
+  padding:18px 0;
+  border-top:1px solid rgba(248,243,233,.22);
+  border-bottom:1px solid rgba(248,243,233,.22);
+}
+
+.instant-symbol{
+  width:48px;
+  height:48px;
+  display:grid;
+  place-items:center;
+  border:2px solid var(--chalk);
+  font-size:24px;
+  background:var(--signal);
+  color:var(--ink);
+}
+
+.instant-room strong{
+  display:block;
+  font-size:14px;
+}
+
+.instant-room span{
+  display:block;
+  margin-top:4px;
+  color:rgba(248,243,233,.55);
+  font:800 10px/1.25 "Courier New",monospace;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+}
+
+/* ---------- footer ---------- */
+.footer{
+  border-top:2px solid var(--ink);
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:0 24px;
+  font:800 10px/1 "Courier New",monospace;
+  text-transform:uppercase;
+  letter-spacing:.14em;
+}
+
+.footer strong{color:var(--signal)}
+
+.toast{
+  position:fixed;
+  z-index:40;
+  left:50%;
+  top:98px;
+  transform:translate(-50%,-15px);
+  background:var(--ink);
+  color:var(--chalk);
+  border:2px solid var(--chalk);
+  padding:11px 14px;
+  opacity:0;
+  pointer-events:none;
+  font:800 11px/1 "Courier New",monospace;
+  text-transform:uppercase;
+  transition:.18s;
+}
+
+.toast.show{
+  opacity:1;
+  transform:translate(-50%,0);
+}
+
+@media(max-width:900px){
+  .main{grid-template-columns:1fr}
+  .visual{
+    min-height:470px;
+    border-right:0;
+    border-bottom:2px solid var(--ink);
+  }
+  .control{min-height:500px}
+  .panel{top:0;bottom:0}
+}
+
+@media(max-width:900px){
+  .header-nav{display:none}
+}
+
+@media(max-width:620px){
+  .header{grid-template-columns:1fr auto;padding:0 14px}
+  .header-right span:not(.live){display:none}
+  .visual{min-height:390px}
+  .word{
+    left:18px;
+    top:22px;
+    font-size:78px;
+  }
+  .emoji-stage{width:170px;height:170px}
+  .emoji{font-size:84px}
+  .room-action{padding:28px 20px}
+  .mode-title{font-size:48px}
+  .panel h2{font-size:48px}
+  .footer{padding:0 14px}
+}
+</style>
+</head>
+<body>
+<div class="toast" id="toast"></div>
+
+<div class="page">
+  <header class="header">
+    <div class="logo">
+      <span class="logo-dvizh">Dvizh</span><span class="logo-go">GO</span>
+    </div>
+
+    <div class="header-nav">
+      <a href="#" class="nav-link">Головна</a>
+      <a href="#" class="nav-link">Як це працює</a>
+      <a href="#" class="nav-link">Для викладачів</a>
+      <a href="#" class="nav-link">Про DvizhGo</a>
+    </div>
+
+    <div class="header-right">
+      <span class="live"><i class="live-dot"></i> live</span>
+      <span>beta</span>
+    </div>
+  </header>
+
+  <main class="main">
+    <section class="visual">
+      <div class="word">
+        Dvizh<span class="go">GO</span>
+      </div>
+
+      <div class="orbit"></div>
+      <div class="orbit o2"></div>
+
+      <div class="emoji-stage" aria-hidden="true">
+        <div class="emoji">🤨</div>
+        <div class="emoji">😎</div>
+        <div class="emoji">🗿</div>
+      </div>
+
+      <div class="cross"></div>
+      <div class="dotmark"></div>
+      <div class="slash"></div>
+    </section>
+
+    <section class="control">
+      <button class="room-action" id="joinMode">
+        <div class="mode-num">01 / student</div>
+        <div class="mode-title">Увійти<br>в кімнату</div>
+        <div class="arrow">↗</div>
+      </button>
+
+      <button class="room-action" id="createMode">
+        <div class="mode-num">02 / teacher</div>
+        <div class="mode-title">Створити<br>кімнату</div>
+        <div class="arrow">↗</div>
+      </button>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <span>Dvizh<span style="color:var(--signal)">GO</span></span>
+    <span>live classroom</span>
+  </footer>
+</div>
+
+<aside class="panel" id="panel">
+  <div class="panel-top">
+    <div class="panel-kicker" id="panelKicker">student access</div>
+    <button class="close" id="closePanel">×</button>
+  </div>
+
+  <div class="panel-body">
+    <div id="joinForm">
+      <h2>Заходь<br>у кімнату.</h2>
+      <p>Введи код кімнати та ім’я.</p>
+
+      <label class="label">room code</label>
+      <input class="input code" id="codeInput" maxlength="6" placeholder="K7M4Q2">
+
+      <label class="label">name</label>
+      <input class="input" id="nameInput" maxlength="60" placeholder="Оля Коваль">
+
+      <button class="primary" id="joinBtn">Приєднатися →</button>
+    </div>
+
+    <div id="createForm" style="display:none">
+      <h2>Нова<br>кімната.</h2>
+      <p>Створи кімнату одним натисканням. Режим та всі параметри налаштуєш уже всередині.</p>
+
+      <div class="instant-room">
+        <div class="instant-symbol">↗</div>
+        <div>
+          <strong>Без зайвих кроків</strong>
+          <span>Створити → зайти → налаштувати</span>
+        </div>
+      </div>
+
+      <button class="primary" id="createBtn">Створити кімнату →</button>
+    </div>
+  </div>
+</aside>
+
+<script>
+const panel=document.getElementById("panel");
+const joinForm=document.getElementById("joinForm");
+const createForm=document.getElementById("createForm");
+const kicker=document.getElementById("panelKicker");
+const toast=document.getElementById("toast");
+
+function openPanel(type){
+  const join=type==="join";
+  joinForm.style.display=join?"flex":"none";
+  createForm.style.display=join?"none":"flex";
+  joinForm.style.flexDirection="column";
+  createForm.style.flexDirection="column";
+  joinForm.style.flex="1";
+  createForm.style.flex="1";
+  kicker.textContent=join?"student access":"teacher access";
+  panel.classList.add("open");
+}
+
+document.getElementById("joinMode").onclick=()=>openPanel("join");
+document.getElementById("createMode").onclick=()=>openPanel("create");
+document.getElementById("closePanel").onclick=()=>panel.classList.remove("open");
+
+document.getElementById("codeInput").addEventListener("input",e=>{
+  e.target.value=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,"").slice(0,6);
+});
+
+function showToast(text){
+  toast.textContent=text;
+  toast.classList.add("show");
+  clearTimeout(window.__t);
+  window.__t=setTimeout(()=>toast.classList.remove("show"),1400);
+}
+
+document.getElementById("joinBtn").onclick=()=>{
+  const code=document.getElementById("codeInput").value.trim();
+  const name=document.getElementById("nameInput").value.trim();
+  if(code.length<4){showToast("room code required");return}
+  if(!name){showToast("name required");return}
+  showToast("connecting to "+code);
+};
+
+document.getElementById("createBtn").onclick=()=>{
+  showToast("creating room");
+};
+
+document.addEventListener("keydown",e=>{
+  if(e.key==="Escape")panel.classList.remove("open");
+});
+</script>
+</body>
+</html>

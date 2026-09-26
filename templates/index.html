@@ -1,31 +1,44 @@
 <!DOCTYPE html>
 <html lang="uk">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Контрольна</title>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DvizhGO</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="{{ url_for('static', filename='js/toast.js') }}"></script>
 </head>
-<body class="landing-page">
-    <main class="center-shell">
-        <section class="glass-card start-card">
-            <div class="eyebrow">PYTHON CONTROL MODE</div>
-            <h1>Контрольна</h1>
-            <p class="subtitle">Серйозні питання. Несерйозний інтерфейс.</p>
-
-            {% if error %}
-                <div class="error-box">{{ error }}</div>
-            {% endif %}
-
-            <form action="{{ url_for('start') }}" method="post" class="start-form">
-                <label for="name">Ім'я та прізвище</label>
-                <input id="name" name="name" maxlength="80" autocomplete="off" placeholder="Наприклад: Оля Коваль" required>
-                <button class="primary-btn" type="submit">Почати</button>
-            </form>
-
-            <p class="microcopy">Після натискання кнопки назад дороги немає. Ну майже.</p>
-            <a class="admin-link" href="{{ url_for('admin') }}">Вхід для викладача</a>
+<body class="dv-menu">
+{% if error %}<span data-toast-message="{{ error }}" data-toast-type="error"></span>{% endif %}
+<div class="dv-page">
+    <header class="dv-header"><div class="dv-logo"><img class="dv-brand-image" src="{{ url_for('static', filename='images/gologo.png') }}" alt="DvizhGO"></div><nav><a href="#" aria-current="page">Головна</a><button disabled title="Незабаром">Як це працює</button><button disabled title="Незабаром">Про платформу</button></nav><div class="dv-live">● LIVE</div></header>
+    <main class="dv-main">
+        <section class="dv-visual"><div class="dv-word">Dviz<span>GO</span></div><div class="dv-orbit"></div><div class="dv-emoji">😎</div></section>
+        <section class="dv-actions">
+            <button type="button" id="openJoin" class="dv-action">
+                <div class="dv-micro">01 / participant</div><h1>Увійти<br>в кімнату</h1>
+                <span class="dv-action-arrow">→</span>
+            </button>
+            <button type="button" id="openCreate" class="dv-action dv-create">
+                <div class="dv-micro">02 / room host</div><h1>Створити<br>кімнату</h1>
+                <p>Назва згенерується автоматично.</p><span class="dv-action-arrow">→</span>
+            </button>
         </section>
     </main>
+    <footer class="dv-footer">DvizhGO · live rooms <span>майбутні розділи вимкнені</span></footer>
+</div>
+<aside id="accessPanel" class="dv-access-panel" aria-hidden="true">
+    <div class="dv-panel-top"><span id="panelKicker" class="dv-micro">PARTICIPANT ACCESS</span><button id="closeAccess" class="dv-icon" type="button">×</button></div>
+    <div id="joinPanel" class="dv-panel-body"><h2>Увійти<br>в кімнату</h2><form action="{{ url_for('join_room') }}" method="post"><label>Код кімнати<input name="code" maxlength="6" placeholder="K7M4Q2" required></label><label>Ваше ім’я<input name="name" maxlength="80" placeholder="Оля Коваль" required></label><button class="dv-panel-primary" type="submit">Увійти →</button></form></div>
+    <div id="createPanel" class="dv-panel-body hidden"><h2>Нова<br>кімната</h2><p>Назва згенерується автоматично. Після створення ви потрапите в лобі.</p><form action="{{ url_for('create_new_room') }}" method="post"><button class="dv-panel-primary" type="submit">Створити кімнату →</button></form></div>
+</aside>
+<script>
+document.querySelectorAll('.dv-action').forEach(action => {
+    action.addEventListener('pointerdown', () => action.classList.add('is-pressed'));
+    action.addEventListener('pointerup', () => action.classList.remove('is-pressed'));
+    action.addEventListener('pointerleave', () => action.classList.remove('is-pressed'));
+});
+const panel=document.getElementById('accessPanel'), join=document.getElementById('joinPanel'), create=document.getElementById('createPanel');
+function openPanel(kind){ panel.classList.add('open'); panel.setAttribute('aria-hidden','false'); join.classList.toggle('hidden',kind!=='join'); create.classList.toggle('hidden',kind!=='create'); document.getElementById('panelKicker').textContent=kind==='join'?'PARTICIPANT ACCESS':'ROOM HOST'; setTimeout(()=>panel.querySelector('input,button:not(#closeAccess)')?.focus(),180); }
+document.getElementById('openJoin').onclick=()=>openPanel('join'); document.getElementById('openCreate').onclick=()=>openPanel('create'); document.getElementById('closeAccess').onclick=()=>{panel.classList.remove('open');panel.setAttribute('aria-hidden','true')};
+</script>
 </body>
 </html>

@@ -17,6 +17,8 @@ class Settings:
     admin_password: str
     shuffle_answers: bool
     shuffle_questions: bool
+    default_locale: str
+    lobby_boost_enabled: bool
 
     @property
     def sqlite_path(self) -> Path:
@@ -32,6 +34,8 @@ class Settings:
             admin_password=os.getenv("ADMIN_PASSWORD", "teacher123"),
             shuffle_answers=as_bool(os.getenv("SHUFFLE_ANSWERS"), True),
             shuffle_questions=as_bool(os.getenv("SHUFFLE_QUESTIONS"), False),
+            default_locale=os.getenv("DEFAULT_LOCALE", "uk").strip().lower(),
+            lobby_boost_enabled=as_bool(os.getenv("LOBBY_BOOST_ENABLED"), False),
         )
 
 

@@ -31,7 +31,11 @@ class DatabaseConnection:
         return self._connection.execute(_query_for_driver(query, self._database_url), params)
 
     def executemany(self, query: str, params: Iterable[Iterable[Any]]):
-        return self._connection.executemany(_query_for_driver(query, self._database_url), params)
+        prepared_query = _query_for_driver(query, self._database_url)
+        if is_postgres(self._database_url):
+            with self._connection.cursor() as cursor:
+                return cursor.executemany(prepared_query, params)
+        return self._connection.executemany(prepared_query, params)
 
     def commit(self):
         self._connection.commit()
@@ -74,6 +78,7 @@ SQLITE_SCHEMA = (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
         started_at TEXT NOT NULL,
+        left_at TEXT,
         finished_at TEXT,
         current_question INTEGER NOT NULL DEFAULT 0,
         score INTEGER NOT NULL DEFAULT 0,
@@ -102,6 +107,7 @@ POSTGRES_SCHEMA = (
         id BIGSERIAL PRIMARY KEY,
         name TEXT NOT NULL,
         started_at TEXT NOT NULL,
+        left_at TEXT,
         finished_at TEXT,
         current_question INTEGER NOT NULL DEFAULT 0,
         score INTEGER NOT NULL DEFAULT 0,
@@ -196,17 +202,129 @@ POSTGRES_ROULETTE_SCHEMA = (
     "CREATE INDEX IF NOT EXISTS idx_roulette_votes_round_id ON roulette_votes(round_id)",
 )
 
+ROOMS_SCHEMA = (
+    """
+    CREATE TABLE IF NOT EXISTS rooms (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        code TEXT NOT NULL UNIQUE,
+        title TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'lobby',
+        created_at TEXT NOT NULL,
+        expires_at TEXT,
+        settings_json TEXT NOT NULL DEFAULT '{}'
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS room_hosts (
+        room_id INTEGER PRIMARY KEY,
+        access_token TEXT NOT NULL UNIQUE,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY(room_id) REFERENCES rooms(id)
+    )
+    """,
+)
+
+POSTGRES_ROOMS_SCHEMA = (
+    """
+    CREATE TABLE IF NOT EXISTS rooms (
+        id BIGSERIAL PRIMARY KEY,
+        code TEXT NOT NULL UNIQUE,
+        title TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'lobby',
+        created_at TEXT NOT NULL,
+        expires_at TEXT,
+        settings_json TEXT NOT NULL DEFAULT '{}'
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS room_hosts (
+        room_id BIGINT PRIMARY KEY REFERENCES rooms(id),
+        access_token TEXT NOT NULL UNIQUE,
+        created_at TEXT NOT NULL
+    )
+    """,
+)
+
+QUIZZES_SCHEMA = (
+    """
+    CREATE TABLE IF NOT EXISTS quizzes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        room_id INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        questions_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY(room_id) REFERENCES rooms(id)
+    )
+    """,
+)
+
+POSTGRES_QUIZZES_SCHEMA = (
+    """
+    CREATE TABLE IF NOT EXISTS quizzes (
+        id BIGSERIAL PRIMARY KEY,
+        room_id BIGINT NOT NULL REFERENCES rooms(id),
+        title TEXT NOT NULL,
+        questions_json TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    )
+    """,
+)
+
+LOBBY_BOOSTS_SCHEMA = (
+    """
+    CREATE TABLE IF NOT EXISTS lobby_boosts (
+        room_id INTEGER NOT NULL,
+        participant_id INTEGER NOT NULL,
+        boosted_until TEXT NOT NULL,
+        cooldown_until TEXT NOT NULL,
+        PRIMARY KEY (room_id, participant_id),
+        FOREIGN KEY(room_id) REFERENCES rooms(id),
+        FOREIGN KEY(participant_id) REFERENCES students(id)
+    )
+    """,
+)
+
+POSTGRES_LOBBY_BOOSTS_SCHEMA = (
+    """
+    CREATE TABLE IF NOT EXISTS lobby_boosts (
+        room_id BIGINT NOT NULL REFERENCES rooms(id),
+        participant_id BIGINT NOT NULL REFERENCES students(id),
+        boosted_until TEXT NOT NULL,
+        cooldown_until TEXT NOT NULL,
+        PRIMARY KEY (room_id, participant_id)
+    )
+    """,
+)
+
+
+def _apply_room_migrations(connection: DatabaseConnection, database_url: str | None) -> None:
+    if is_postgres(database_url):
+        connection.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS room_id BIGINT REFERENCES rooms(id)")
+        connection.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS left_at TEXT")
+        connection.execute("ALTER TABLE roulette_rounds ADD COLUMN IF NOT EXISTS room_id BIGINT REFERENCES rooms(id)")
+        connection.execute("ALTER TABLE rooms ADD COLUMN IF NOT EXISTS active_quiz_id BIGINT")
+    else:
+        for table, column in (("students", "room_id"), ("students", "left_at"), ("roulette_rounds", "room_id"), ("rooms", "active_quiz_id")):
+            columns = {row["name"] for row in connection.execute(f"PRAGMA table_info({table})").fetchall()}
+            if column not in columns:
+                connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} INTEGER")
+    connection.execute("CREATE INDEX IF NOT EXISTS idx_students_room_id ON students(room_id)")
+    connection.execute("CREATE INDEX IF NOT EXISTS idx_roulette_rounds_room_id ON roulette_rounds(room_id)")
+    connection.execute("CREATE INDEX IF NOT EXISTS idx_quizzes_room_id ON quizzes(room_id)")
+    connection.execute("CREATE INDEX IF NOT EXISTS idx_lobby_boosts_room_id ON lobby_boosts(room_id)")
+
 
 def initialize_database(database_url: str | None, sqlite_path: Path) -> None:
     connection = connect_database(database_url, sqlite_path)
     try:
         schema = (
-            POSTGRES_SCHEMA + POSTGRES_ROULETTE_SCHEMA
+            POSTGRES_SCHEMA + POSTGRES_ROULETTE_SCHEMA + POSTGRES_ROOMS_SCHEMA + POSTGRES_QUIZZES_SCHEMA + POSTGRES_LOBBY_BOOSTS_SCHEMA
             if is_postgres(database_url)
-            else SQLITE_SCHEMA + SQLITE_ROULETTE_SCHEMA
+            else SQLITE_SCHEMA + SQLITE_ROULETTE_SCHEMA + ROOMS_SCHEMA + QUIZZES_SCHEMA + LOBBY_BOOSTS_SCHEMA
         )
         for statement in schema:
             connection.execute(statement)
+        _apply_room_migrations(connection, database_url)
         connection.commit()
     finally:
         connection.close()

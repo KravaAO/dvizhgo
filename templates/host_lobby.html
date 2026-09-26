@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Лобі · {{ room.title }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="{{ url_for('static', filename='js/toast.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/leave-modal.js') }}"></script>
+</head>
+<body class="lobby-page dv-lobby dv-lobby-page" data-host="true">
+<div class="dv-lobby-layout">
+    <header class="dv-lobby-header">
+        <div class="dv-logo"><img class="dv-brand-image" src="{{ url_for('static', filename='images/gologo.png') }}" alt="DvizhGO"></div>
+        <div class="dv-lobby-state">● ЛОБІ / КВАДРАТИ АКТИВНІ</div>
+        <div class="dv-lobby-tools"><button id="copyRoomCode" class="dv-icon" title="Копіювати код">↗</button><button id="openRoomSettings" class="dv-icon" title="Налаштування">⚙</button><form action="{{ url_for('admin_logout') }}" method="post" data-confirm-leave><button class="dv-icon" title="Вийти" type="submit">×</button></form></div>
+    </header>
+    <main class="dv-lobby-main">
+        <aside class="dv-room-panel">
+            <div><div class="dv-micro">КОД КІМНАТИ</div><div class="dv-room-code">{{ room.code }}</div><div class="dv-room-url">DvizhGO / {{ room.code }}</div><button id="copyRoomCodeWide" class="dv-copy" type="button">Скопіювати код</button></div>
+            <div class="dv-host-block"><div><div class="dv-micro">ROOM HOST</div><strong>{{ room.title }}</strong></div><span>LOBBY</span></div>
+        </aside>
+        <section class="dv-stage">
+            <div class="dv-stage-head"><div><div class="dv-micro">PARTICIPANTS</div><h1>Кімната вже в двіжі</h1></div><div class="dv-count" id="lobbyCount">Підключення…</div></div>
+            <div class="dv-arena-wrap"><div id="dvdAvatars" class="dvd-stage dv-arena"><div class="dv-arena-label">SQUARE LOBBY / AVATAR READY</div></div><div class="dv-peek" aria-hidden="true">😎</div></div>
+        </section>
+    </main>
+    <footer class="dv-lobby-footer"><span>Очікуємо учасників · {{ room.title }}</span><button class="dv-disabled-control" type="button" disabled>⚡ BOOST / SOON</button><button id="startQuiz" class="dv-start" type="button">Почати — дати завдання →</button></footer>
+</div>
+<aside id="roomSettingsDrawer" class="dv-drawer" aria-hidden="true">
+    <div class="dv-drawer-head"><span class="dv-micro">НАЛАШТУВАННЯ КІМНАТИ</span><button id="closeRoomSettings" class="dv-icon">×</button></div>
+    <h2>Налаштування<br>кімнати</h2>
+    <label>Режим проходження<select id="roomMode" data-custom-select><option value="self_paced">Самостійно</option><option value="live">Live</option></select></label>
+    <a class="dv-drawer-link" href="{{ url_for('quizzes') }}">Редагувати / обрати квіз →</a>
+    <p class="dv-drawer-note">Спершу підготуйте квіз. Після «Почати» всі учасники в лобі перейдуть до завдань.</p>
+    <button class="dv-disabled-control" disabled>Активності / soon</button><button class="dv-disabled-control" disabled>Редагування кімнати / soon</button>
+</aside>
+<script>
+document.querySelectorAll('#copyRoomCode,#copyRoomCodeWide').forEach(button => button.addEventListener('click', async () => { try { await navigator.clipboard.writeText('{{ room.code }}'); showToast('Код кімнати скопійовано.', {type:'success'}); } catch { showToast('Не вдалося скопіювати код.', {type:'error'}); }}));
+const drawer=document.getElementById('roomSettingsDrawer'); document.getElementById('openRoomSettings').onclick=()=>drawer.classList.add('open'); document.getElementById('closeRoomSettings').onclick=()=>drawer.classList.remove('open');
+</script>
+<script src="{{ url_for('static', filename='js/select.js') }}"></script>
+<script src="{{ url_for('static', filename='js/lobby.js') }}"></script>
+</body>
+</html>

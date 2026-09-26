@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Квізи · {{ room.title }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="{{ url_for('static', filename='js/toast.js') }}"></script>
+</head>
+<body class="admin-page">
+    <header class="admin-header">
+        <div>
+            <div class="eyebrow">QUIZ LIBRARY · {{ room.code }}</div>
+            <h1>Квізи кімнати</h1>
+        </div>
+        <div class="admin-actions"><a class="secondary-btn" href="{{ url_for('host_lobby') }}">← До лобі</a><button id="startFromQuizzes" class="primary-btn" type="button">Почати квіз</button></div>
+    </header>
+
+    <main class="admin-shell quiz-builder-shell">
+        <section class="admin-panel">
+            <div class="roulette-admin-head">
+                <div>
+                    <h2>Готовий квіз і збережені</h2>
+                    <p class="microcopy">Активний квіз отримають нові учасники, які приєднаються до кімнати.</p>
+                </div>
+            </div>
+            <div id="quizLibrary" class="quiz-library"></div>
+        </section>
+
+        <section class="admin-panel">
+            <div class="roulette-admin-head">
+                <div>
+                    <h2>Створити з тексту ШІ</h2>
+                    <p class="microcopy">Скопіюйте інструкцію в чат, вставте отриманий JSON сюди та натисніть «Рендер».</p>
+                </div>
+                <button id="copyAiPrompt" class="secondary-btn" type="button">Копіювати інструкцію для ШІ</button>
+            </div>
+            <textarea id="quizJson" class="quiz-json-input" spellcheck="false" placeholder='{"title":"Git basics","questions":[...]}'></textarea>
+            <div class="modal-actions">
+                <button id="renderQuiz" class="secondary-btn" type="button">Рендер</button>
+                <button id="saveQuiz" class="primary-btn" type="button" disabled>Зберегти квіз</button>
+            </div>
+        </section>
+
+        <section id="quizPreviewPanel" class="admin-panel hidden">
+            <div class="roulette-admin-head">
+                <div>
+                    <h2 id="previewTitle">Попередній перегляд</h2>
+                    <p id="previewMeta" class="microcopy"></p>
+                </div>
+            </div>
+            <div id="quizPreview" class="quiz-preview"></div>
+        </section>
+    </main>
+
+    <script>
+    const aiPrompt = `Створи квіз у чистому JSON без Markdown і без пояснень поза JSON. Формат:
+{
+  "title": "Назва квіза",
+  "questions": [
+    {
+      "type": "single",
+      "question": "Текст питання",
+      "text": "Додатковий контекст або інструкція до завдання (необов'язково).",
+      "code": "print(2 + 2)",
+      "answers": ["Варіант 1", "Варіант 2", "Варіант 3", "Варіант 4"],
+      "correct": [0],
+      "explanation": "Коротке пояснення",
+      "difficulty": "easy"
+    }
+  ]
+}
+Правила валідації:
+- Поверни ТІЛЬКИ один JSON-об'єкт, без Markdown, коментарів або тексту до/після нього.
+- Не додавай поле id: платформа створить його сама.
+- Дозволені type: single (рівно одна відповідь у correct), multiple (одна або кілька), true_false (рівно 2 answers і одна відповідь у correct).
+- correct — масив індексів answers, нумерація починається з 0.
+- У кожному питанні 2–8 непорожніх варіантів; загалом 1–67 питань.
+- explanation і difficulty необов'язкові. Для difficulty використовуй easy, medium або hard.
+- text і code необов'язкові: text виводиться як додатковий контекст між питанням та кодом. Код додавай лише коли він потрібен для завдання.
+- Усі питання, відповіді та пояснення — українською мовою.`;
+    let previewQuiz = null;
+
+    const escapeHtml = value => String(value).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'})[ch]);
+
+    async function loadLibrary() {
+        const res = await fetch('/api/admin/quizzes');
+        if (!res.ok) return;
+        const data = await res.json();
+        const library = document.getElementById('quizLibrary');
+        const items = [data.built_in, ...data.quizzes];
+        library.innerHTML = items.map(quiz => `
+            <article class="quiz-library-item ${quiz.active ? 'active-quiz' : ''}">
+                <div><strong>${escapeHtml(quiz.title)}</strong><span>${quiz.count} питань${quiz.active ? ' · активний' : ''}</span></div>
+                ${quiz.active ? '<span class="status-pill done">Активний</span>' : `<button class="secondary-btn" data-quiz-id="${quiz.id ?? 'default'}">Обрати</button>`}
+            </article>`).join('');
+        library.querySelectorAll('[data-quiz-id]').forEach(button => button.addEventListener('click', () => activateQuiz(button.dataset.quizId)));
+    }
+
+    async function activateQuiz(id) {
+        const url = id === 'default' ? '/api/admin/quizzes/default/activate' : `/api/admin/quizzes/${id}/activate`;
+        const res = await fetch(url, {method: 'POST'});
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return showToast(data.error || 'Не вдалося обрати квіз.', {type: 'error'});
+        showToast('Квіз обрано для кімнати.', {type: 'success'});
+        loadLibrary();
+    }
+
+    document.getElementById('copyAiPrompt').addEventListener('click', async () => {
+        try {
+            await navigator.clipboard.writeText(aiPrompt);
+            showToast('Інструкцію скопійовано.', {type: 'success'});
+        } catch {
+            showToast('Не вдалося скопіювати. Спробуйте через HTTPS або localhost.', {type: 'error'});
+        }
+    });
+
+    document.getElementById('renderQuiz').addEventListener('click', () => {
+        try {
+            const raw = document.getElementById('quizJson').value.trim();
+            previewQuiz = JSON.parse(raw);
+            const questions = Array.isArray(previewQuiz) ? previewQuiz : previewQuiz.questions;
+            if (!Array.isArray(questions) || !questions.length) throw new Error('Потрібен масив questions.');
+            const title = Array.isArray(previewQuiz) ? 'Новий квіз' : previewQuiz.title || 'Новий квіз';
+            document.getElementById('previewTitle').textContent = title;
+            document.getElementById('previewMeta').textContent = `${questions.length} питань · перевірте зміст перед збереженням`;
+            document.getElementById('quizPreview').innerHTML = questions.map((question, index) => `
+                <article class="quiz-preview-item"><strong>${index + 1}. ${escapeHtml(question.question || '')}</strong>
+                ${question.text ? `<p>${escapeHtml(question.text)}</p>` : ''}
+                ${question.code ? `<pre>${escapeHtml(question.code)}</pre>` : ''}
+                <span class="question-chip">${escapeHtml(question.type || 'single')}</span>
+                <ol>${(question.answers || []).map((answer, answerIndex) => `<li class="${(question.correct || []).includes(answerIndex) ? 'correct-preview' : ''}">${escapeHtml(answer)}</li>`).join('')}</ol></article>`).join('');
+            document.getElementById('quizPreviewPanel').classList.remove('hidden');
+            document.getElementById('saveQuiz').disabled = false;
+            showToast('Квіз відрендерено. Тепер його можна зберегти.', {type: 'success'});
+        } catch (error) {
+            previewQuiz = null;
+            document.getElementById('saveQuiz').disabled = true;
+            showToast(`Не вдалося прочитати JSON: ${error.message}`, {type: 'error'});
+        }
+    });
+
+    document.getElementById('saveQuiz').addEventListener('click', async () => {
+        if (!previewQuiz) return;
+        const res = await fetch('/api/admin/quizzes', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(previewQuiz)});
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return showToast(data.error || 'Не вдалося зберегти квіз.', {type: 'error'});
+        showToast(`Квіз «${data.title}» збережено. Оберіть його у бібліотеці.`, {type: 'success'});
+        document.getElementById('quizJson').value = '';
+        document.getElementById('saveQuiz').disabled = true;
+        loadLibrary();
+    });
+
+    loadLibrary();
+    document.getElementById('startFromQuizzes').addEventListener('click', async event => {
+        const button = event.currentTarget;
+        if (button.disabled) return;
+        button.disabled = true;
+        for (let seconds = 3; seconds > 0; seconds -= 1) {
+            button.textContent = `Старт через ${seconds}…`;
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+        const res = await fetch('/api/lobby/start', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({mode: 'self_paced'})});
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { button.disabled = false; button.textContent = 'Почати квіз'; return showToast(data.error || 'Не вдалося почати квіз.', {type:'error'}); }
+        button.textContent = 'Квіз розпочато';
+        showToast('Учасники отримали завдання.', {type:'success'});
+        setTimeout(() => { window.location.href = '/admin'; }, 500);
+    });
+    </script>
+</body>
+</html>

@@ -8,6 +8,7 @@ const rainLayer = document.getElementById("rainLayer");
 const reactionToast = document.getElementById("reactionToast");
 const soundToggle = document.getElementById("soundToggle");
 const comboLabel = document.getElementById("comboLabel");
+const answerResultBadge = document.getElementById("answerResultBadge");
 const progressLabel = document.getElementById("progressLabel");
 const rouletteOverlay = document.getElementById("rouletteOverlay");
 const rouletteWheel = document.getElementById("rouletteWheel");
@@ -18,7 +19,8 @@ const rouletteAction = document.getElementById("rouletteAction");
 const rouletteNotice = document.getElementById("rouletteNotice");
 
 const questionNumber = Number(page.dataset.questionNumber);
-progressLabel.textContent = `Виконано: ${questionNumber - 1} · Завдання ${questionNumber} / 67`;
+const totalQuestions = Number(page.dataset.totalQuestions);
+progressLabel.textContent = `ЗАВДАННЯ ${questionNumber} / ${totalQuestions}`;
 
 const correctMessages = [
     "+1 до IQ",
@@ -115,6 +117,7 @@ soundToggle.addEventListener("click", () => {
 
 function updateSoundIcon() {
     soundToggle.textContent = soundEnabled ? "🔊" : "🔇";
+    soundToggle.setAttribute("aria-pressed", String(soundEnabled));
 }
 
 function updateCombo() {
@@ -180,6 +183,8 @@ function showWrongCharacter() {
     layer.replaceChildren();
     const el = document.createElement("div");
     el.className = "edge-character wrong-character";
+    el.style.left = `${12 + Math.random() * 76}%`;
+    el.style.top = `${12 + Math.random() * 58}%`;
     el.textContent = "😭";
     layer.appendChild(el);
     requestAnimationFrame(() => el.classList.add("visible"));
@@ -244,7 +249,7 @@ function submitRouletteAnswer(form) {
         });
         if (!res.ok) {
             const data = await res.json().catch(() => ({}));
-            rouletteNotice.textContent = data.error || "Не вдалося надіслати відповідь.";
+            showToast(data.error || "Не вдалося надіслати відповідь.", { type: "error" });
             return;
         }
         pollRoulette();
@@ -264,7 +269,7 @@ function createVoteButton(participant) {
         });
         if (!res.ok) {
             const data = await res.json().catch(() => ({}));
-            rouletteNotice.textContent = data.error || "Не вдалося поставити лайк.";
+            showToast(data.error || "Не вдалося поставити лайк.", { type: "error" });
             return;
         }
         pollRoulette();
@@ -281,7 +286,7 @@ function renderRoulette(round) {
 
     rouletteOverlay.classList.remove("hidden");
     const pendingAnswer = rouletteAction.querySelector('textarea[name="answer"]')?.value || "";
-    rouletteQuestion.textContent = `Питання викладача: ${round.question}`;
+    rouletteQuestion.textContent = `Питання кімнати: ${round.question}`;
     rouletteParticipants.replaceChildren(...round.participants.map(makeRoulettePerson));
     rouletteAction.replaceChildren();
     rouletteNotice.textContent = "";
@@ -311,7 +316,7 @@ function renderRoulette(round) {
             rouletteAction.appendChild(form);
             submitRouletteAnswer(form);
         } else {
-            rouletteNotice.textContent = "Обрані учні готують відповіді. Зачекайте на голосування.";
+            rouletteNotice.textContent = "Обрані учасники готують відповіді. Зачекайте на голосування.";
         }
         return;
     }
@@ -337,7 +342,7 @@ function renderRoulette(round) {
     rouletteAction.appendChild(answers);
     if (round.user_vote) rouletteNotice.textContent = "Ваш лайк уже зараховано.";
     if (!round.can_vote && !round.user_vote) rouletteNotice.textContent = "Учасники раунду не голосують за власні відповіді.";
-    if (round.status === "voting") rouletteNotice.textContent += " Викладач завершить раунд після голосування.";
+    if (round.status === "voting") rouletteNotice.textContent += " Host завершить раунд після голосування.";
 }
 
 async function pollRoulette() {
@@ -395,6 +400,11 @@ function showReaction(message) {
     reactionToast.classList.add("show");
 }
 
+function showAnswerResult(isCorrect) {
+    answerResultBadge.textContent = isCorrect ? "ПРАВИЛЬНО" : "НЕПРАВИЛЬНО";
+    answerResultBadge.className = `answer-result-badge ${isCorrect ? "correct" : "wrong"}`;
+}
+
 async function submitAnswer() {
     if (submitting || selected.size === 0) return;
 
@@ -434,6 +444,7 @@ async function submitAnswer() {
             card.classList.add("correct");
             markCorrectAnswers(data.correct_answers);
             playSound(correctSounds);
+            showAnswerResult(true);
 
             let message = randomItem(correctMessages);
             if (responseTime < 2) message = "Ти хоч питання прочитав?";
@@ -445,7 +456,8 @@ async function submitAnswer() {
             sessionStorage.setItem("quizCombo", "0");
             card.classList.add("wrong");
             markWrongAndCorrect(data.correct_answers);
-            showWrongCharacter();
+            showAnswerResult(false);
+            if (Math.random() < 0.35) showWrongCharacter();
             startRain();
             playSound(wrongMusic, 0.1, true);
             showReaction(randomItem(wrongMessages));

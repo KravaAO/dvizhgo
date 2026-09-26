@@ -3,30 +3,68 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Результат</title>
+    <title>Результат · DvizhGO</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="{{ url_for('static', filename='js/toast.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/leave-modal.js') }}"></script>
 </head>
-<body class="result-page">
-    <main class="center-shell">
-        <section class="glass-card result-card">
-            <div class="eyebrow">CONTROL COMPLETE</div>
-            <h1>Контрольну завершено</h1>
-            <div class="score-big">{{ score }} / {{ total }}</div>
-            <div class="percent">{{ percent }}%</div>
-            <div class="rank">{{ rank }}</div>
+<body class="result-page dv-finish-page">
+    <div class="dv-finish-layout">
+        <header class="dv-finish-head">
+            <img class="dv-brand-image" src="{{ url_for('static', filename='images/gologo.png') }}" alt="DvizhGO">
+            <span class="dv-finish-center">КВІЗ ЗАВЕРШЕНО</span>
+            <span class="dv-finish-state"><i></i> РЕЗУЛЬТАТ ГОТОВИЙ</span>
+        </header>
 
-            <div class="result-grid">
-                <div><span>Правильних</span><strong>{{ score }}</strong></div>
-                <div><span>Помилок</span><strong>{{ total - score }}</strong></div>
-                <div><span>Час</span><strong>{{ total_time }}</strong></div>
+        <main class="dv-finish-main">
+            <section class="dv-finish-hero">
+                <div class="dv-finish-confetti" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+                <div>
+                    <span class="dv-finish-kicker">QUIZ / FINISHED</span>
+                    <h1>ФІ<span>НІШ</span>.</h1>
+                </div>
+                <div class="dv-finish-reaction" aria-hidden="true">{% if percent >= 80 %}🔥{% elif percent >= 50 %}😎{% else %}🫠{% endif %}</div>
+                <div class="dv-finish-score">
+                    <strong>{{ score }}<small>/{{ total }}</small></strong>
+                    <span>ПРАВИЛЬНИХ ВІДПОВІДЕЙ<br>РЕЗУЛЬТАТ ЦІЄЇ СЕСІЇ</span>
+                </div>
+            </section>
+
+            <section class="dv-finish-stats" aria-label="Результати квіза">
+                <div class="dv-finish-stat">
+                    <span>ТОЧНІСТЬ</span>
+                    <strong>{{ percent }}%</strong>
+                    <div class="dv-finish-bar"><i style="width: {{ percent }}%"></i></div>
+                </div>
+                <div class="dv-finish-stat accent">
+                    <span>РЕЗУЛЬТАТ</span>
+                    <strong>{{ rank }}</strong>
+                </div>
+                <div class="dv-finish-stat">
+                    <span>ЧАС</span>
+                    <strong>{{ total_time }}</strong>
+                </div>
+                <div class="dv-finish-stat">
+                    <span>ПОМИЛОК</span>
+                    <strong>{{ total - score }}</strong>
+                </div>
+            </section>
+        </main>
+
+        <footer class="dv-finish-foot">
+            <div>
+                <strong>КВІЗ ЗАВЕРШЕНО</strong>
+                <span>РЕЗУЛЬТАТ ЗБЕРІГАЄТЬСЯ ЛИШЕ ДЛЯ ЦІЄЇ СЕСІЇ</span>
             </div>
-
-            {% if percent == 100 %}
-                <div class="final-meme">Підозріло ідеально. Python схвалює.</div>
-            {% endif %}
-
-            <a class="secondary-btn" href="{{ url_for('index') }}">На головну</a>
-        </section>
-    </main>
+            <div class="dv-finish-actions">
+                <form action="{{ url_for('retry_quiz') }}" method="post">
+                    <button class="dv-finish-retry" type="submit">ЩЕ РАЗ</button>
+                </form>
+                <form action="{{ url_for('leave_room') }}" method="post" data-confirm-leave>
+                    <button class="dv-finish-leave" type="submit">ВИЙТИ З КІМНАТИ →</button>
+                </form>
+            </div>
+        </footer>
+    </div>
 </body>
 </html>

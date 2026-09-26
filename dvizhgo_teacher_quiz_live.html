@@ -1,0 +1,810 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DvizhGo — Teacher Live Quiz</title>
+<style>
+:root{
+  --paper:#eee7d9;
+  --ink:#171714;
+  --signal:#ff5a36;
+  --petrol:#164d4b;
+  --chalk:#f8f3e9;
+  --faded:#746e63;
+  --mustard:#e7c94f;
+  --dust:#8fb6a8;
+  --rose:#cf6b74;
+}
+*{box-sizing:border-box}
+html,body{
+  margin:0;
+  width:100%;
+  height:100%;
+  background:var(--paper);
+  color:var(--ink);
+  font-family:Arial,Helvetica,sans-serif;
+}
+body{overflow:hidden}
+button{font:inherit}
+
+.page{
+  height:100vh;
+  display:grid;
+  grid-template-rows:78px 1fr 84px;
+  background:
+    linear-gradient(rgba(23,23,20,.025) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(23,23,20,.025) 1px,transparent 1px),
+    var(--paper);
+  background-size:32px 32px;
+}
+
+/* HEADER */
+.header{
+  border-bottom:2px solid var(--ink);
+  display:grid;
+  grid-template-columns:auto 1fr auto;
+  align-items:center;
+  gap:22px;
+  padding:0 22px;
+}
+.brand{
+  display:flex;
+  align-items:center;
+  gap:16px;
+}
+.logo{
+  display:flex;
+  align-items:center;
+  font-weight:1000;
+  font-size:24px;
+  letter-spacing:-.075em;
+}
+.logo-go{
+  margin-left:2px;
+  padding:6px 8px 7px;
+  background:var(--ink);
+  color:var(--paper);
+  transform:rotate(-2deg);
+  box-shadow:4px 4px 0 var(--signal);
+}
+.room-meta{
+  padding-left:16px;
+  border-left:2px solid var(--ink);
+}
+.micro{
+  font:900 9px/1 "Courier New",monospace;
+  text-transform:uppercase;
+  letter-spacing:.14em;
+  color:var(--faded);
+}
+.room-name{
+  margin-top:4px;
+  font-size:16px;
+  font-weight:1000;
+}
+.live-state{
+  justify-self:center;
+  display:flex;
+  align-items:center;
+  gap:9px;
+  font:900 10px/1 "Courier New",monospace;
+  text-transform:uppercase;
+  letter-spacing:.12em;
+}
+.live-dot{
+  width:9px;height:9px;border-radius:50%;
+  background:var(--signal);
+  animation:blink 1.1s steps(1,end) infinite;
+}
+@keyframes blink{50%{opacity:.2}}
+.header-actions{
+  display:flex;
+  gap:8px;
+}
+.header-btn{
+  height:40px;
+  border:2px solid var(--ink);
+  background:transparent;
+  color:var(--ink);
+  padding:0 13px;
+  font:900 10px/1 "Courier New",monospace;
+  text-transform:uppercase;
+  cursor:pointer;
+}
+.header-btn:hover{
+  background:var(--ink);
+  color:var(--paper);
+}
+.header-btn.danger{
+  background:var(--signal);
+  box-shadow:4px 4px 0 var(--ink);
+}
+
+/* MAIN */
+.main{
+  min-height:0;
+  display:grid;
+  grid-template-columns:minmax(0,1.34fr) minmax(350px,.66fr);
+}
+
+/* LEFT LIVE STAGE */
+.stage{
+  min-width:0;
+  min-height:0;
+  border-right:2px solid var(--ink);
+  display:grid;
+  grid-template-rows:138px 1fr;
+}
+.overview{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  border-bottom:2px solid var(--ink);
+  background:var(--chalk);
+}
+.metric{
+  padding:20px 22px;
+  border-right:2px solid var(--ink);
+  display:flex;
+  flex-direction:column;
+  justify-content:space-between;
+}
+.metric:last-child{border-right:0}
+.metric-label{
+  font:900 9px/1 "Courier New",monospace;
+  text-transform:uppercase;
+  letter-spacing:.13em;
+  color:var(--faded);
+}
+.metric-value{
+  font-size:42px;
+  line-height:.85;
+  font-weight:1000;
+  letter-spacing:-.06em;
+}
+.metric-value.signal{color:var(--signal)}
+.metric-sub{
+  font:800 9px/1 "Courier New",monospace;
+  color:var(--faded);
+}
+
+.quiz-stage{
+  position:relative;
+  display:grid;
+  grid-template-rows:auto 1fr;
+  min-height:0;
+  overflow:hidden;
+}
+.quiz-top{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  padding:24px 28px 16px;
+  border-bottom:2px solid var(--ink);
+}
+.quiz-title{
+  font-size:clamp(34px,4.2vw,58px);
+  line-height:.86;
+  letter-spacing:-.065em;
+  font-weight:1000;
+}
+.quiz-index{
+  font:900 11px/1 "Courier New",monospace;
+  text-transform:uppercase;
+  letter-spacing:.12em;
+}
+.quiz-body{
+  min-height:0;
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(280px,.52fr);
+}
+.question-panel{
+  padding:30px 28px;
+  border-right:2px solid var(--ink);
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  position:relative;
+}
+.question-kicker{
+  font:900 9px/1 "Courier New",monospace;
+  text-transform:uppercase;
+  letter-spacing:.14em;
+  color:var(--faded);
+}
+.question-text{
+  margin-top:16px;
+  max-width:760px;
+  font-size:clamp(34px,4vw,56px);
+  line-height:.98;
+  letter-spacing:-.055em;
+  font-weight:1000;
+}
+.code{
+  margin-top:22px;
+  width:max-content;
+  max-width:100%;
+  background:var(--ink);
+  color:var(--chalk);
+  border-left:8px solid var(--signal);
+  padding:13px 15px;
+  font:800 13px/1.4 "Courier New",monospace;
+}
+.question-foot{
+  position:absolute;
+  left:28px;
+  right:28px;
+  bottom:20px;
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+.progressbar{
+  flex:1;
+  height:10px;
+  border:2px solid var(--ink);
+  position:relative;
+}
+.progressbar span{
+  position:absolute;inset:0 auto 0 0;
+  width:58%;
+  background:var(--petrol);
+}
+.progress-text{
+  font:900 9px/1 "Courier New",monospace;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+}
+
+.distribution{
+  background:var(--chalk);
+  display:grid;
+  grid-template-rows:auto 1fr;
+}
+.dist-head{
+  padding:18px 18px 12px;
+  border-bottom:2px solid var(--ink);
+}
+.dist-head strong{
+  display:block;
+  margin-top:4px;
+  font-size:20px;
+}
+.bars{
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  gap:14px;
+  padding:18px;
+}
+.bar-row{
+  display:grid;
+  grid-template-columns:34px 1fr 42px;
+  align-items:center;
+  gap:10px;
+}
+.bar-key{
+  width:34px;height:34px;
+  border:2px solid var(--ink);
+  display:grid;place-items:center;
+  font:900 10px/1 "Courier New",monospace;
+}
+.bar-track{
+  height:28px;
+  border:2px solid var(--ink);
+  position:relative;
+  overflow:hidden;
+}
+.bar-fill{
+  position:absolute;
+  inset:0 auto 0 0;
+  width:0;
+  background:var(--dust);
+  transition:.6s;
+}
+.bar-fill.signal{background:var(--signal)}
+.bar-fill.petrol{background:var(--petrol)}
+.bar-fill.mustard{background:var(--mustard)}
+.bar-num{
+  font:900 10px/1 "Courier New",monospace;
+  text-align:right;
+}
+
+/* RIGHT CONTROL RAIL */
+.rail{
+  min-width:0;
+  min-height:0;
+  display:grid;
+  grid-template-rows:auto auto 1fr;
+  background:var(--paper);
+}
+.rail-section{
+  border-bottom:2px solid var(--ink);
+  padding:20px;
+}
+.rail-section:last-child{border-bottom:0}
+.rail-title{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+}
+.rail-title h3{
+  margin:0;
+  font-size:24px;
+  line-height:.9;
+  letter-spacing:-.04em;
+}
+.activity-grid{
+  margin-top:14px;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  border-left:2px solid var(--ink);
+  border-top:2px solid var(--ink);
+}
+.activity{
+  min-height:72px;
+  border-right:2px solid var(--ink);
+  border-bottom:2px solid var(--ink);
+  background:var(--chalk);
+  color:var(--ink);
+  text-align:left;
+  padding:12px;
+  cursor:pointer;
+  font-weight:1000;
+}
+.activity:hover{
+  background:var(--signal);
+}
+.activity small{
+  display:block;
+  margin-top:5px;
+  font:800 8px/1 "Courier New",monospace;
+  color:var(--faded);
+  text-transform:uppercase;
+}
+.extra{
+  margin-top:14px;
+  width:100%;
+  height:54px;
+  border:2px solid var(--ink);
+  background:var(--signal);
+  box-shadow:5px 5px 0 var(--ink);
+  font-weight:1000;
+  text-transform:uppercase;
+  cursor:pointer;
+}
+.extra:hover{
+  transform:translate(-2px,-2px);
+  box-shadow:8px 8px 0 var(--ink);
+}
+
+/* STUDENTS */
+.students{
+  min-height:0;
+  display:flex;
+  flex-direction:column;
+}
+.students-head{
+  padding:18px 20px 12px;
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+}
+.students-list{
+  min-height:0;
+  overflow:auto;
+  border-top:2px solid var(--ink);
+}
+.student{
+  min-height:64px;
+  border-bottom:1px solid rgba(23,23,20,.22);
+  display:grid;
+  grid-template-columns:34px 1fr auto;
+  align-items:center;
+  gap:12px;
+  padding:10px 20px;
+}
+.student:last-child{border-bottom:0}
+.avatar{
+  width:34px;height:34px;
+  border:2px solid var(--ink);
+  display:grid;place-items:center;
+  background:var(--paper);
+  font-weight:1000;
+  font-size:10px;
+}
+.student-main strong{
+  display:block;
+  font-size:13px;
+}
+.student-main span{
+  display:block;
+  margin-top:3px;
+  font:800 8px/1 "Courier New",monospace;
+  text-transform:uppercase;
+  color:var(--faded);
+}
+.student-state{
+  font:900 9px/1 "Courier New",monospace;
+  text-transform:uppercase;
+  padding:6px 7px;
+  border:1px solid var(--ink);
+}
+.student-state.done{
+  background:var(--petrol);
+  color:var(--chalk);
+}
+.student-state.live{
+  background:var(--mustard);
+}
+
+/* FOOTER CONTROLS */
+.footer{
+  border-top:2px solid var(--ink);
+  display:grid;
+  grid-template-columns:1fr auto auto auto;
+  align-items:center;
+  gap:10px;
+  padding:0 20px;
+  background:var(--paper);
+}
+.footer-info{
+  min-width:0;
+}
+.footer-title{
+  font-size:14px;
+  font-weight:1000;
+}
+.footer-sub{
+  margin-top:3px;
+  font:800 9px/1 "Courier New",monospace;
+  color:var(--faded);
+  text-transform:uppercase;
+}
+.control-btn{
+  height:50px;
+  min-width:126px;
+  border:2px solid var(--ink);
+  background:transparent;
+  color:var(--ink);
+  font-weight:1000;
+  text-transform:uppercase;
+  cursor:pointer;
+}
+.control-btn:hover{
+  background:var(--ink);
+  color:var(--paper);
+}
+.control-btn.pause{
+  background:var(--mustard);
+}
+.control-btn.stop{
+  background:var(--signal);
+}
+.control-btn.next{
+  background:var(--petrol);
+  color:var(--chalk);
+}
+
+/* EXTRA OVERLAY */
+.overlay{
+  position:fixed;
+  inset:0;
+  z-index:50;
+  background:rgba(23,23,20,.72);
+  display:none;
+  place-items:center;
+  padding:24px;
+}
+.overlay.open{display:grid}
+.modal{
+  width:min(760px,96vw);
+  background:var(--paper);
+  border:3px solid var(--ink);
+  box-shadow:12px 12px 0 var(--signal);
+}
+.modal-head{
+  padding:18px 20px;
+  border-bottom:2px solid var(--ink);
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+}
+.modal-head h3{
+  margin:0;
+  font-size:34px;
+  letter-spacing:-.05em;
+}
+.close{
+  border:0;background:transparent;
+  font-size:24px;cursor:pointer
+}
+.modal-grid{
+  display:grid;
+  grid-template-columns:repeat(2,1fr);
+}
+.modal-action{
+  min-height:130px;
+  border:0;
+  border-right:2px solid var(--ink);
+  border-bottom:2px solid var(--ink);
+  background:var(--chalk);
+  text-align:left;
+  padding:20px;
+  cursor:pointer;
+}
+.modal-action:nth-child(2n){border-right:0}
+.modal-action:nth-last-child(-n+2){border-bottom:0}
+.modal-action:hover{background:var(--signal)}
+.modal-action strong{
+  display:block;
+  font-size:26px;
+  line-height:.9;
+}
+.modal-action span{
+  display:block;
+  margin-top:8px;
+  font:800 9px/1.3 "Courier New",monospace;
+  color:var(--faded);
+  text-transform:uppercase;
+}
+
+@media(max-width:1100px){
+  .main{grid-template-columns:1fr}
+  .rail{display:none}
+}
+</style>
+</head>
+<body>
+
+<div class="page">
+  <header class="header">
+    <div class="brand">
+      <div class="logo">Dvizh<span class="logo-go">GO</span></div>
+      <div class="room-meta">
+        <div class="micro">room host / VMSGV2</div>
+        <div class="room-name">Смілива Ракета</div>
+      </div>
+    </div>
+
+    <div class="live-state">
+      <span class="live-dot"></span>
+      quiz live / 7 of 12
+    </div>
+
+    <div class="header-actions">
+      <button class="header-btn">Лобі</button>
+      <button class="header-btn">Квізи</button>
+      <button class="header-btn danger" id="extraTop">+ Extra</button>
+    </div>
+  </header>
+
+  <main class="main">
+    <section class="stage">
+      <div class="overview">
+        <div class="metric">
+          <div class="metric-label">у кімнаті</div>
+          <div class="metric-value">18</div>
+          <div class="metric-sub">online</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">відповіли</div>
+          <div class="metric-value signal">11</div>
+          <div class="metric-sub">на поточне</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">проходять</div>
+          <div class="metric-value">7</div>
+          <div class="metric-sub">ще у quiz</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">середня точність</div>
+          <div class="metric-value">74%</div>
+          <div class="metric-sub">class result</div>
+        </div>
+      </div>
+
+      <div class="quiz-stage">
+        <div class="quiz-top">
+          <div>
+            <div class="micro">current question</div>
+            <div class="quiz-title">Питання зараз у класі</div>
+          </div>
+          <div class="quiz-index">07 / 12</div>
+        </div>
+
+        <div class="quiz-body">
+          <section class="question-panel">
+            <div class="question-kicker">python / list indexing</div>
+            <div class="question-text">Що поверне цей код?</div>
+            <div class="code">numbers = [1, 2, 3]<br>print(numbers[-1])</div>
+
+            <div class="question-foot">
+              <div class="progressbar"><span></span></div>
+              <div class="progress-text">11 / 18 answered</div>
+            </div>
+          </section>
+
+          <aside class="distribution">
+            <div class="dist-head">
+              <div class="micro">live answers</div>
+              <strong>Розподіл відповідей</strong>
+            </div>
+
+            <div class="bars">
+              <div class="bar-row">
+                <div class="bar-key">A</div>
+                <div class="bar-track"><div class="bar-fill" data-width="18%"></div></div>
+                <div class="bar-num">2</div>
+              </div>
+              <div class="bar-row">
+                <div class="bar-key">B</div>
+                <div class="bar-track"><div class="bar-fill mustard" data-width="27%"></div></div>
+                <div class="bar-num">3</div>
+              </div>
+              <div class="bar-row">
+                <div class="bar-key">C</div>
+                <div class="bar-track"><div class="bar-fill petrol" data-width="45%"></div></div>
+                <div class="bar-num">5</div>
+              </div>
+              <div class="bar-row">
+                <div class="bar-key">D</div>
+                <div class="bar-track"><div class="bar-fill signal" data-width="9%"></div></div>
+                <div class="bar-num">1</div>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <aside class="rail">
+      <section class="rail-section">
+        <div class="rail-title">
+          <h3>Live control</h3>
+          <div class="micro">teacher only</div>
+        </div>
+
+        <div class="activity-grid">
+          <button class="activity">Quick Question<small>1 prompt</small></button>
+          <button class="activity">Vote<small>class poll</small></button>
+          <button class="activity">Reaction<small>send live</small></button>
+          <button class="activity">Break<small>short event</small></button>
+        </div>
+
+        <button class="extra" id="extraMain">+ EXTRA ACTIVITY</button>
+      </section>
+
+      <section class="rail-section">
+        <div class="rail-title">
+          <h3>Class pulse</h3>
+          <div class="micro">live</div>
+        </div>
+        <div style="margin-top:14px;font-size:44px;font-weight:1000;letter-spacing:-.06em;">58%</div>
+        <div class="micro" style="margin-top:6px;">still on current question</div>
+      </section>
+
+      <section class="students">
+        <div class="students-head">
+          <div>
+            <div class="micro">participants</div>
+            <div style="font-size:22px;font-weight:1000;margin-top:4px;">18 у room</div>
+          </div>
+          <div class="micro">live status</div>
+        </div>
+
+        <div class="students-list">
+          <div class="student">
+            <div class="avatar">ОК</div>
+            <div class="student-main">
+              <strong>Оля Коваль</strong>
+              <span>question 07</span>
+            </div>
+            <div class="student-state live">thinking</div>
+          </div>
+          <div class="student">
+            <div class="avatar">МБ</div>
+            <div class="student-main">
+              <strong>Максим Бондар</strong>
+              <span>question 08</span>
+            </div>
+            <div class="student-state done">ahead</div>
+          </div>
+          <div class="student">
+            <div class="avatar">ІМ</div>
+            <div class="student-main">
+              <strong>Іра Мельник</strong>
+              <span>question 07</span>
+            </div>
+            <div class="student-state live">thinking</div>
+          </div>
+          <div class="student">
+            <div class="avatar">ДЛ</div>
+            <div class="student-main">
+              <strong>Данило Левченко</strong>
+              <span>question 12</span>
+            </div>
+            <div class="student-state done">done</div>
+          </div>
+          <div class="student">
+            <div class="avatar">СР</div>
+            <div class="student-main">
+              <strong>Софія Романюк</strong>
+              <span>question 06</span>
+            </div>
+            <div class="student-state live">behind</div>
+          </div>
+        </div>
+      </section>
+    </aside>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-info">
+      <div class="footer-title">Квіз іде · room залишається live</div>
+      <div class="footer-sub">можна втрутитися або запустити extra activity</div>
+    </div>
+
+    <button class="control-btn pause" id="pauseBtn">Пауза</button>
+    <button class="control-btn next">Наступне →</button>
+    <button class="control-btn stop" id="stopBtn">Завершити</button>
+  </footer>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <div class="modal-head">
+      <div>
+        <div class="micro">interrupt quiz</div>
+        <h3>Extra Activity</h3>
+      </div>
+      <button class="close" id="closeOverlay">×</button>
+    </div>
+
+    <div class="modal-grid">
+      <button class="modal-action">
+        <strong>Duel</strong>
+        <span>2 students + class vote</span>
+      </button>
+      <button class="modal-action">
+        <strong>Quick Question</strong>
+        <span>one live question</span>
+      </button>
+      <button class="modal-action">
+        <strong>Vote</strong>
+        <span>class poll / instant</span>
+      </button>
+      <button class="modal-action">
+        <strong>Break</strong>
+        <span>short reset activity</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+const overlay=document.getElementById("overlay");
+["extraTop","extraMain"].forEach(id=>{
+  document.getElementById(id).onclick=()=>overlay.classList.add("open");
+});
+document.getElementById("closeOverlay").onclick=()=>overlay.classList.remove("open");
+
+document.getElementById("pauseBtn").onclick=(e)=>{
+  e.currentTarget.textContent=
+    e.currentTarget.textContent==="Пауза" ? "Продовжити" : "Пауза";
+};
+
+document.getElementById("stopBtn").onclick=()=>{
+  if(confirm("Завершити квіз для всієї кімнати?")){
+    alert("Demo: quiz finished");
+  }
+};
+
+window.addEventListener("DOMContentLoaded",()=>{
+  document.querySelectorAll(".bar-fill").forEach((el,i)=>{
+    setTimeout(()=>el.style.width=el.dataset.width,150+i*90);
+  });
+});
+</script>
+</body>
+</html>
