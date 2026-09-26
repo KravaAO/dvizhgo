@@ -15,6 +15,8 @@
 
 `db` — PostgreSQL з іменованим volume `postgres_data`.
 
+`redis` — Socket.IO pub/sub для room events; не зберігає quiz results.
+
 Запуск:
 
 ```bash
@@ -23,15 +25,19 @@ copy .env.example .env
 docker compose up --build
 ```
 
-## Наступний етап: WebSocket
+## Realtime: Socket.IO
 
-WebSocket поки не реалізований. Коли він знадобиться, додається окремий realtime-шар без зміни контрактів БД:
+WebSocket вже працює через Flask-SocketIO. Браузер підключається лише до своєї room, а сервер публікує `room:state`, `room:presence`, `room:results_updated` та `room:duel_updated`. PostgreSQL залишається джерелом істини, Redis — лише transport/pub-sub.
 
-1. Винести правила тесту й рулетки з HTTP-контролерів у `quiz_app/services/`.
-2. Додати ASGI-процес (наприклад, Flask-SocketIO або окремий FastAPI/Starlette gateway).
-3. Додати Redis як pub/sub і спільний adapter для Socket.IO; це обов'язково для кількох worker-ів чи контейнерів.
-4. Канали: `class:{class_id}` для рулетки та `student:{student_id}` для персональних оновлень.
-5. HTTP endpoints лишаються fallback, а після зміни стану сервіс публікує подію `roulette.created`, `roulette.voting` або `roulette.closed`.
+Поточний Docker node навмисно має один Gunicorn worker і 100 threads: Socket.IO для Gunicorn потребує sticky sessions для horizontal scaling. Для кількох `web` instances load balancer має забезпечувати sticky sessions, а Redis синхронізує події між ними.
+
+Наступні технічні кроки для подальшого масштабування:
+
+1. Винести правила квіза й ДВИЖ-ДУЕЛЮ з HTTP-контролерів у `quiz_app/services/`.
+2. Додати load balancer зі sticky sessions перед кількома `web` instances.
+3. Винести Socket.IO client з CDN у versioned локальний asset під час production packaging.
+4. Додати персональні канали на кшталт `participant:{participant_id}` для приватних оновлень.
+5. Залишити HTTP endpoints для команд і одноразового initial data load, а room changes доставляти через Socket.IO events.
 
 PostgreSQL лишається джерелом істини; Redis не зберігає результати тесту.
 

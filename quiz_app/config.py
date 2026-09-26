@@ -19,6 +19,8 @@ class Settings:
     shuffle_questions: bool
     default_locale: str
     lobby_boost_enabled: bool
+    socketio_message_queue: str | None
+    avatar_lab_path: str
 
     @property
     def sqlite_path(self) -> Path:
@@ -36,6 +38,8 @@ class Settings:
             shuffle_questions=as_bool(os.getenv("SHUFFLE_QUESTIONS"), False),
             default_locale=os.getenv("DEFAULT_LOCALE", "uk").strip().lower(),
             lobby_boost_enabled=as_bool(os.getenv("LOBBY_BOOST_ENABLED"), False),
+            socketio_message_queue=os.getenv("SOCKETIO_MESSAGE_QUEUE") or None,
+            avatar_lab_path=os.getenv("AVATAR_LAB_PATH", "").strip().strip("/"),
         )
 
 

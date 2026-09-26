@@ -16,6 +16,18 @@ services:
       timeout: 5s
       retries: 10
 
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   web:
     build: .
     restart: unless-stopped
@@ -27,9 +39,14 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env}
       SHUFFLE_ANSWERS: ${SHUFFLE_ANSWERS:-true}
       SHUFFLE_QUESTIONS: ${SHUFFLE_QUESTIONS:-false}
+      SOCKETIO_MESSAGE_QUEUE: redis://redis:6379/0
+      AVATAR_LAB_PATH: ${AVATAR_LAB_PATH:?Set AVATAR_LAB_PATH in .env}
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
 
 volumes:
   postgres_data:
+  redis_data:

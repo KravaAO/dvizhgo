@@ -297,6 +297,198 @@ POSTGRES_LOBBY_BOOSTS_SCHEMA = (
 )
 
 
+# Runtime state is intentionally separate from the legacy students/answers
+# tables. A room participant can take part in many activities, while an
+# attempt belongs to exactly one activity.
+SQLITE_ROOM_RUNTIME_SCHEMA = (
+    """
+    CREATE TABLE IF NOT EXISTS room_participants (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        room_id INTEGER NOT NULL REFERENCES rooms(id),
+        display_name TEXT NOT NULL,
+        reconnect_token_hash TEXT NOT NULL,
+        joined_at TEXT NOT NULL,
+        last_seen_at TEXT NOT NULL,
+        left_at TEXT,
+        metadata_json TEXT NOT NULL DEFAULT '{}'
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS activities (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        room_id INTEGER NOT NULL REFERENCES rooms(id),
+        type TEXT NOT NULL,
+        status TEXT NOT NULL,
+        config_json TEXT NOT NULL DEFAULT '{}',
+        started_at TEXT NOT NULL,
+        paused_at TEXT,
+        finished_at TEXT
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS room_runtime (
+        room_id INTEGER PRIMARY KEY REFERENCES rooms(id),
+        current_activity_id INTEGER REFERENCES activities(id),
+        state TEXT NOT NULL DEFAULT 'lobby',
+        version INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS quiz_attempts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        activity_id INTEGER NOT NULL REFERENCES activities(id),
+        participant_id INTEGER NOT NULL REFERENCES room_participants(id),
+        question_order_json TEXT NOT NULL,
+        current_question INTEGER NOT NULL DEFAULT 0,
+        score INTEGER NOT NULL DEFAULT 0,
+        started_at TEXT NOT NULL,
+        finished_at TEXT,
+        abandoned_at TEXT
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS quiz_attempt_answers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        attempt_id INTEGER NOT NULL REFERENCES quiz_attempts(id),
+        question_id INTEGER NOT NULL,
+        selected_answers_json TEXT NOT NULL,
+        is_correct INTEGER NOT NULL,
+        response_time REAL NOT NULL,
+        answered_at TEXT NOT NULL,
+        UNIQUE(attempt_id, question_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS duel_rounds (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        room_id INTEGER NOT NULL REFERENCES rooms(id),
+        activity_id INTEGER NOT NULL REFERENCES activities(id),
+        question TEXT NOT NULL,
+        candidate_pool_json TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'answering',
+        created_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS duel_participants (
+        round_id INTEGER NOT NULL REFERENCES duel_rounds(id),
+        participant_id INTEGER NOT NULL REFERENCES room_participants(id),
+        answer_text TEXT,
+        answered_at TEXT,
+        PRIMARY KEY (round_id, participant_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS duel_votes (
+        round_id INTEGER NOT NULL REFERENCES duel_rounds(id),
+        voter_id INTEGER NOT NULL REFERENCES room_participants(id),
+        choice_participant_id INTEGER NOT NULL REFERENCES room_participants(id),
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (round_id, voter_id)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_room_participants_room ON room_participants(room_id, left_at)",
+    "CREATE INDEX IF NOT EXISTS idx_activities_room_status ON activities(room_id, status)",
+    "CREATE INDEX IF NOT EXISTS idx_quiz_attempts_activity_participant ON quiz_attempts(activity_id, participant_id)",
+    "CREATE INDEX IF NOT EXISTS idx_duel_rounds_room_status ON duel_rounds(room_id, status)",
+)
+
+POSTGRES_ROOM_RUNTIME_SCHEMA = (
+    """
+    CREATE TABLE IF NOT EXISTS room_participants (
+        id BIGSERIAL PRIMARY KEY,
+        room_id BIGINT NOT NULL REFERENCES rooms(id),
+        display_name TEXT NOT NULL,
+        reconnect_token_hash TEXT NOT NULL,
+        joined_at TEXT NOT NULL,
+        last_seen_at TEXT NOT NULL,
+        left_at TEXT,
+        metadata_json TEXT NOT NULL DEFAULT '{}'
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS activities (
+        id BIGSERIAL PRIMARY KEY,
+        room_id BIGINT NOT NULL REFERENCES rooms(id),
+        type TEXT NOT NULL,
+        status TEXT NOT NULL,
+        config_json TEXT NOT NULL DEFAULT '{}',
+        started_at TEXT NOT NULL,
+        paused_at TEXT,
+        finished_at TEXT
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS room_runtime (
+        room_id BIGINT PRIMARY KEY REFERENCES rooms(id),
+        current_activity_id BIGINT REFERENCES activities(id),
+        state TEXT NOT NULL DEFAULT 'lobby',
+        version INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS quiz_attempts (
+        id BIGSERIAL PRIMARY KEY,
+        activity_id BIGINT NOT NULL REFERENCES activities(id),
+        participant_id BIGINT NOT NULL REFERENCES room_participants(id),
+        question_order_json TEXT NOT NULL,
+        current_question INTEGER NOT NULL DEFAULT 0,
+        score INTEGER NOT NULL DEFAULT 0,
+        started_at TEXT NOT NULL,
+        finished_at TEXT,
+        abandoned_at TEXT
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS quiz_attempt_answers (
+        id BIGSERIAL PRIMARY KEY,
+        attempt_id BIGINT NOT NULL REFERENCES quiz_attempts(id),
+        question_id INTEGER NOT NULL,
+        selected_answers_json TEXT NOT NULL,
+        is_correct BOOLEAN NOT NULL,
+        response_time DOUBLE PRECISION NOT NULL,
+        answered_at TEXT NOT NULL,
+        UNIQUE(attempt_id, question_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS duel_rounds (
+        id BIGSERIAL PRIMARY KEY,
+        room_id BIGINT NOT NULL REFERENCES rooms(id),
+        activity_id BIGINT NOT NULL REFERENCES activities(id),
+        question TEXT NOT NULL,
+        candidate_pool_json TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'answering',
+        created_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS duel_participants (
+        round_id BIGINT NOT NULL REFERENCES duel_rounds(id),
+        participant_id BIGINT NOT NULL REFERENCES room_participants(id),
+        answer_text TEXT,
+        answered_at TEXT,
+        PRIMARY KEY (round_id, participant_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS duel_votes (
+        round_id BIGINT NOT NULL REFERENCES duel_rounds(id),
+        voter_id BIGINT NOT NULL REFERENCES room_participants(id),
+        choice_participant_id BIGINT NOT NULL REFERENCES room_participants(id),
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (round_id, voter_id)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_room_participants_room ON room_participants(room_id, left_at)",
+    "CREATE INDEX IF NOT EXISTS idx_activities_room_status ON activities(room_id, status)",
+    "CREATE INDEX IF NOT EXISTS idx_quiz_attempts_activity_participant ON quiz_attempts(activity_id, participant_id)",
+    "CREATE INDEX IF NOT EXISTS idx_duel_rounds_room_status ON duel_rounds(room_id, status)",
+)
+
+
 def _apply_room_migrations(connection: DatabaseConnection, database_url: str | None) -> None:
     if is_postgres(database_url):
         connection.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS room_id BIGINT REFERENCES rooms(id)")
@@ -318,9 +510,9 @@ def initialize_database(database_url: str | None, sqlite_path: Path) -> None:
     connection = connect_database(database_url, sqlite_path)
     try:
         schema = (
-            POSTGRES_SCHEMA + POSTGRES_ROULETTE_SCHEMA + POSTGRES_ROOMS_SCHEMA + POSTGRES_QUIZZES_SCHEMA + POSTGRES_LOBBY_BOOSTS_SCHEMA
+            POSTGRES_SCHEMA + POSTGRES_ROULETTE_SCHEMA + POSTGRES_ROOMS_SCHEMA + POSTGRES_QUIZZES_SCHEMA + POSTGRES_LOBBY_BOOSTS_SCHEMA + POSTGRES_ROOM_RUNTIME_SCHEMA
             if is_postgres(database_url)
-            else SQLITE_SCHEMA + SQLITE_ROULETTE_SCHEMA + ROOMS_SCHEMA + QUIZZES_SCHEMA + LOBBY_BOOSTS_SCHEMA
+            else SQLITE_SCHEMA + SQLITE_ROULETTE_SCHEMA + ROOMS_SCHEMA + QUIZZES_SCHEMA + LOBBY_BOOSTS_SCHEMA + SQLITE_ROOM_RUNTIME_SCHEMA
         )
         for statement in schema:
             connection.execute(statement)

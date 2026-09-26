@@ -85,8 +85,12 @@ def get_host_room(conn, room_id: int | None, access_token: str | None):
 
 
 def add_participant(conn, room_id: int, name: str, question_ids: list[int]) -> int:
+    """Legacy helper retained for compatibility during the schema transition.
+
+    Ordering is deliberately preserved here. Shuffle belongs to the activity
+    start policy, never to a room join operation.
+    """
     order = list(question_ids)
-    random.shuffle(order)
     participant_id = conn.insert_and_get_id(
         """
         INSERT INTO students (room_id, name, started_at, total_questions, question_order)
