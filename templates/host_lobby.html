@@ -39,6 +39,8 @@ document.querySelectorAll('#copyRoomCode,#copyRoomCodeWide').forEach(button => b
 const drawer=document.getElementById('roomSettingsDrawer'); document.getElementById('openRoomSettings').onclick=()=>drawer.classList.add('open'); document.getElementById('closeRoomSettings').onclick=()=>drawer.classList.remove('open');
 </script>
 <script src="{{ url_for('static', filename='js/select.js') }}"></script>
+<script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+<script src="{{ url_for('static', filename='js/room-socket.js') }}"></script>
 <script src="{{ url_for('static', filename='js/lobby.js') }}"></script>
 </body>
 </html>

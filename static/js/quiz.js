@@ -224,7 +224,7 @@ function startRouletteSpin(round) {
     const names = round.candidate_pool.length ? round.candidate_pool : round.participants.map(p => p.name);
     let index = 0;
     rouletteWheel.classList.add("spinning");
-    rouletteWheelName.textContent = "Рулетка обирає…";
+    rouletteWheelName.textContent = "ДВИЖ-ДУЕЛЬ обирає…";
     rouletteSpinTimer = setInterval(() => {
         rouletteWheelName.textContent = names[index % names.length];
         index += 1;
@@ -342,7 +342,7 @@ function renderRoulette(round) {
     rouletteAction.appendChild(answers);
     if (round.user_vote) rouletteNotice.textContent = "Ваш лайк уже зараховано.";
     if (!round.can_vote && !round.user_vote) rouletteNotice.textContent = "Учасники раунду не голосують за власні відповіді.";
-    if (round.status === "voting") rouletteNotice.textContent += " Host завершить раунд після голосування.";
+    if (round.status === "voting") rouletteNotice.textContent += " Творець кімнати завершить режим після голосування.";
 }
 
 async function pollRoulette() {
@@ -506,5 +506,13 @@ function markWrongAndCorrect(correctIndexes) {
     });
 }
 
-pollRoulette();
-setInterval(pollRoulette, 3000);
+connectRoomSocket({
+    state(state) {
+        if (state.activity_type === 'duel') {
+            window.location.href = '/activity';
+            return;
+        }
+        if (!state.activity_type && state.room_status === 'lobby') window.location.href = '/lobby';
+    },
+    duel() { window.location.href = '/activity'; },
+});

@@ -57,6 +57,7 @@
                 <span>РЕЗУЛЬТАТ ЗБЕРІГАЄТЬСЯ ЛИШЕ ДЛЯ ЦІЄЇ СЕСІЇ</span>
             </div>
             <div class="dv-finish-actions">
+                <a class="dv-finish-lobby" href="{{ url_for('lobby') }}">До лобі</a>
                 <form action="{{ url_for('retry_quiz') }}" method="post">
                     <button class="dv-finish-retry" type="submit">ЩЕ РАЗ</button>
                 </form>
@@ -66,5 +67,8 @@
             </div>
         </footer>
     </div>
+    <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+    <script src="{{ url_for('static', filename='js/room-socket.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/result-room.js') }}"></script>
 </body>
 </html>

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="uk">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Avatar Lab · DvizhGO</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="avatar-lab-page" data-asset-root="{{ url_for('static', filename='images/avatars/') }}">
+    <header class="avatar-lab-head">
+        <a href="{{ url_for('index') }}" class="avatar-lab-brand">Dvizh<span>GO</span></a>
+        <p>TEMP / AVATAR CALIBRATION</p>
+        <a href="{{ url_for('lobby') }}">До лобі →</a>
+    </header>
+    <main class="avatar-lab-layout">
+        <section class="avatar-lab-stage-panel">
+            <div class="avatar-lab-stage-head"><div><p class="avatar-lab-micro">СЦЕНА 420 × 420</p><h1>ПЕРЕВІР<br>ШАРИ</h1></div><p>Точки — межі PNG після масштабу й зсуву.</p></div>
+            <div id="avatarLabStage" class="avatar-lab-stage">
+                <div class="avatar-lab-axis avatar-lab-axis-x"></div><div class="avatar-lab-axis avatar-lab-axis-y"></div>
+                <div id="avatarLabBaseBounds" class="avatar-lab-bounds avatar-lab-bounds-base"><i></i><i></i><i></i><i></i><b>АВАТАР</b></div>
+                <div id="avatarLabHeadwearBounds" class="avatar-lab-bounds avatar-lab-bounds-headwear"><i></i><i></i><i></i><i></i><b>УБІР</b></div>
+                <img id="avatarLabBase" alt="Базовий аватар"><img id="avatarLabHeadwear" alt="Головний убір">
+                <span class="avatar-lab-origin">0 / 0</span><span class="avatar-lab-center">50 / 50</span>
+            </div>
+        </section>
+        <aside class="avatar-lab-controls">
+            <p class="avatar-lab-micro">ІНСТРУМЕНТ / ТИМЧАСОВО</p>
+            <label>АВАТАР<select id="avatarLabBaseSelect"></select></label>
+            <div id="avatarLabBaseControls" class="avatar-lab-control-group" data-layer="base"><h2>БАЗОВИЙ<br>АВАТАР</h2></div>
+            <label>ГОЛОВНИЙ УБІР<select id="avatarLabHeadwearSelect"></select></label>
+            <label class="avatar-lab-check"><input id="avatarLabHeadwearEnabled" type="checkbox" checked> Показувати головний убір</label>
+            <label>ПОРЯДОК ШАРІВ<select id="avatarLabLayerOrder"><option value="headwear-top">УБІР НАД АВАТАРОМ</option><option value="avatar-top">АВАТАР НАД УБОРОМ</option></select></label>
+            <div id="avatarLabHeadwearControls" class="avatar-lab-control-group" data-layer="headwear"><h2>ГОЛОВНИЙ<br>УБІР</h2></div>
+            <div class="avatar-lab-output"><div><span>СКОПІЮЙ ЦЕЙ JSON</span><button id="avatarLabCopy" type="button">Копіювати</button></div><pre id="avatarLabValues"></pre></div>
+            <div class="avatar-lab-save"><button id="avatarLabSave" type="button">Зберегти локально</button><span id="avatarLabSaveStatus" aria-live="polite">Ще не збережено</span></div>
+        </aside>
+    </main>
+    <script src="{{ url_for('static', filename='js/avatar-lab.js') }}"></script>
+</body>
+</html>

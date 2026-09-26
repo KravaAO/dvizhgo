@@ -1,6 +1,25 @@
 <!DOCTYPE html><html lang="uk"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Лобі · {{ room.title }}</title><link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}"><script src="{{ url_for('static', filename='js/toast.js') }}"></script><script src="{{ url_for('static', filename='js/leave-modal.js') }}"></script></head>
 <body class="lobby-page dv-student-lobby" data-host="false"><div class="dv-student-layout">
 <header class="dv-student-head"><div class="dv-logo"><img class="dv-brand-image" src="{{ url_for('static', filename='images/gologo.png') }}" alt="DvizhGO"></div><div>КІМНАТА <strong>{{ room.code }}</strong></div><div><span class="dv-online-dot"></span><span id="lobbyCount">ПІДКЛЮЧЕННЯ…</span><form action="{{ url_for('leave_room') }}" method="post" data-confirm-leave><button class="dv-icon" type="submit">×</button></form></div></header>
-<main class="dv-student-stage"><div id="dvdAvatars" class="dvd-stage dv-student-arena"><div class="dv-arena-label">LOBBY / WAITING ROOM</div></div><div class="dv-identity"><div class="dv-micro">ВАШ КВАДРАТ</div><strong>{{ participant_name }}</strong><span>ПОЗНАЧЕНИЙ YOU</span></div><div class="dv-peek" aria-hidden="true">👀</div></main>
+<main class="dv-student-stage">
+    <aside id="avatarPicker" class="dv-avatar-picker" aria-label="Налаштування персонажа">
+        <div class="dv-micro">ВАШ ПЕРСОНАЖ</div>
+        <div id="avatarPreview" class="dv-avatar-preview" aria-hidden="true"></div>
+        <div class="dv-avatar-control">
+            <span>АВАТАР</span>
+            <div><button type="button" data-avatar-part="avatar" data-avatar-direction="-1" aria-label="Попередній аватар">←</button><strong id="avatarChoice">01 / 04</strong><button type="button" data-avatar-part="avatar" data-avatar-direction="1" aria-label="Наступний аватар">→</button></div>
+        </div>
+        <div class="dv-avatar-control">
+            <span>ГОЛОВНИЙ УБІР</span>
+            <div><button type="button" data-avatar-part="headwear" data-avatar-direction="-1" aria-label="Попередній головний убір">←</button><strong id="headwearChoice">01 / 09</strong><button type="button" data-avatar-part="headwear" data-avatar-direction="1" aria-label="Наступний головний убір">→</button></div>
+            <button id="removeHeadwear" class="dv-remove-headwear" type="button">Без головного убору</button>
+        </div>
+    </aside>
+    <section class="dv-student-arena-wrap">
+        <div id="dvdAvatars" class="dvd-stage dv-student-arena"><div class="dv-arena-label">LOBBY / WAITING ROOM</div></div>
+        <div class="dv-identity"><div class="dv-micro">ВАШ ПЕРСОНАЖ</div><strong>{{ participant_name }}</strong><span>ПОЗНАЧЕНИЙ YOU</span></div>
+        <div class="dv-peek" aria-hidden="true">👀</div>
+    </section>
+</main>
 <footer class="dv-student-footer"><div><strong>Чекаємо на старт</strong><span>HOST ГОТУЄ ЗАВДАННЯ</span></div><button class="dv-disabled-control" disabled>⚡ BOOST / SOON</button></footer>
-</div><script src="{{ url_for('static', filename='js/lobby.js') }}"></script></body></html>
+</div><script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script><script src="{{ url_for('static', filename='js/room-socket.js') }}"></script><script src="{{ url_for('static', filename='js/lobby.js') }}"></script></body></html>

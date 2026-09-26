@@ -11,15 +11,90 @@ let simulatedFrame = 0;
 let sceneParticipants = [];
 let sceneBoosts = {};
 let viewerId = null;
+let viewerAppearance = null;
+
+const AVATAR_ASSET_ROOT = '/static/images/avatars/';
+const avatarOptions = ['avatar-1', 'avatar-2', 'avatar-3', 'avatar-4'];
+const headwearOptions = ['headwear-1', 'headwear-2', 'headwear-3', 'headwear-4', 'headwear-5', 'headwear-6', 'headwear-7', 'headwear-8', 'headwear-9'];
+const AVATAR_CALIBRATION_REFERENCE = 680;
+const avatarBaseLayout = {scale: 0.77, x: 0, y: 138};
+const headwearLayouts = {
+    'headwear-1': {enabled: true, scale: 0.83, x: 0, y: -146, layerOrder: 'avatar-top'},
+    'headwear-2': {enabled: true, scale: 0.75, x: 0, y: -62, layerOrder: 'avatar-top'},
+    'headwear-3': {enabled: true, scale: 1.29, x: 0, y: 129, layerOrder: 'headwear-top'},
+    'headwear-4': {enabled: true, scale: 1, x: 0, y: 0, layerOrder: 'avatar-top'},
+    'headwear-5': {enabled: true, scale: 0.75, x: 0, y: -57, layerOrder: 'headwear-top'},
+    'headwear-6': {enabled: true, scale: 0.91, x: 0, y: -88, layerOrder: 'avatar-top'},
+    'headwear-7': {enabled: true, scale: 0.86, x: 0, y: -124, layerOrder: 'avatar-top'},
+    'headwear-8': {enabled: true, scale: 0.84, x: 0, y: 0, layerOrder: 'avatar-top'},
+    'headwear-9': {enabled: true, scale: 0.95, x: 0, y: -200, layerOrder: 'avatar-top'},
+};
 
 function colorFor(id) {
     return ['#82aeea', '#e7a86f', '#8bd5aa', '#c69ee7', '#e78392'][id % 5];
 }
 
+function normalizedAppearance(appearance = {}) {
+    const headwear = appearance.headwear;
+    return {
+        avatar: avatarOptions.includes(appearance.avatar) ? appearance.avatar : avatarOptions[0],
+        headwear: headwear === null ? null : (headwearOptions.includes(headwear) ? headwear : headwearOptions[0]),
+    };
+}
+
+function appearanceKey(participant) {
+    const appearance = normalizedAppearance(participant.appearance);
+    return `${appearance.avatar}:${appearance.headwear}`;
+}
+
+function calibratedTransform(layout) {
+    const x = (layout.x / AVATAR_CALIBRATION_REFERENCE) * 100;
+    const y = (layout.y / AVATAR_CALIBRATION_REFERENCE) * 100;
+    return `translate(${x}%, ${y}%) scale(${layout.scale})`;
+}
+
+function createAvatarArt(appearance, className = 'player-avatar-art') {
+    const resolved = normalizedAppearance(appearance);
+    const art = document.createElement('div');
+    art.className = className;
+    const avatar = document.createElement('img');
+    avatar.className = 'player-avatar-base';
+    avatar.src = `${AVATAR_ASSET_ROOT}${resolved.avatar}.png`;
+    avatar.alt = '';
+    avatar.style.transform = calibratedTransform(avatarBaseLayout);
+    art.appendChild(avatar);
+    if (resolved.headwear) {
+        const layout = headwearLayouts[resolved.headwear];
+        const headwear = document.createElement('img');
+        headwear.className = 'player-avatar-headwear';
+        headwear.src = `${AVATAR_ASSET_ROOT}${resolved.headwear}.png`;
+        headwear.alt = '';
+        headwear.style.transform = calibratedTransform(layout);
+        const headwearIsTop = layout.layerOrder === 'headwear-top';
+        avatar.style.zIndex = headwearIsTop ? '2' : '4';
+        headwear.style.zIndex = headwearIsTop ? '4' : '2';
+        headwear.hidden = !layout.enabled;
+        art.appendChild(headwear);
+    }
+    return art;
+}
+
+function updateAvatarPicker(appearance) {
+    const picker = document.getElementById('avatarPicker');
+    const preview = document.getElementById('avatarPreview');
+    if (!picker || !preview) return;
+    viewerAppearance = normalizedAppearance(appearance);
+    preview.replaceChildren(createAvatarArt(viewerAppearance, 'player-avatar-art player-avatar-art-preview'));
+    document.getElementById('avatarChoice').textContent = `${String(avatarOptions.indexOf(viewerAppearance.avatar) + 1).padStart(2, '0')} / 04`;
+    document.getElementById('headwearChoice').textContent = viewerAppearance.headwear
+        ? `${String(headwearOptions.indexOf(viewerAppearance.headwear) + 1).padStart(2, '0')} / ${String(headwearOptions.length).padStart(2, '0')}`
+        : 'БЕЗ УБОРУ';
+}
+
 function resetScene(participants, boosts = {}) {
     sceneParticipants = participants;
     sceneBoosts = boosts;
-    sceneKey = participants.map(participant => `${participant.id}:${boosts[String(participant.id)]?.active ? 'boost' : 'normal'}`).join(',');
+    sceneKey = participants.map(participant => `${participant.id}:${appearanceKey(participant)}:${boosts[String(participant.id)]?.active ? 'boost' : 'normal'}`).join(',');
     sceneEpoch = Math.floor((Date.now() + clockOffset) / SCENE_MS) * SCENE_MS;
     simulatedFrame = 0;
     avatarLayer.replaceChildren();
@@ -30,11 +105,10 @@ function resetScene(participants, boosts = {}) {
         node.className = 'dvd-avatar';
         if (String(participant.id) === String(viewerId)) node.classList.add('me');
         node.style.setProperty('--avatar-color', colorFor(participant.id));
-        const mark = document.createElement('span');
-        mark.textContent = 'DVD';
+        node.appendChild(createAvatarArt(participant.appearance));
         const name = document.createElement('small');
         name.textContent = participant.name;
-        node.append(mark, name);
+        node.appendChild(name);
         avatarLayer.appendChild(node);
         avatars.set(String(participant.id), {
             node,
@@ -112,9 +186,12 @@ async function pollLobby() {
         const data = await response.json();
         clockOffset = Date.parse(data.server_time) - Date.now();
         viewerId = data.viewer_id;
-        if (data.status === 'active' && !isHost) { window.location.href = '/quiz'; return; }
-        const key = data.participants.map(participant => `${participant.id}:${data.boosts[String(participant.id)]?.active ? 'boost' : 'normal'}`).join(',');
+        if (data.current_activity_type === 'duel' && !isHost) { window.location.href = '/activity'; return; }
+        if (data.status === 'active' && data.has_active_attempt && !isHost) { window.location.href = '/quiz'; return; }
+        const key = data.participants.map(participant => `${participant.id}:${appearanceKey(participant)}:${data.boosts[String(participant.id)]?.active ? 'boost' : 'normal'}`).join(',');
         if (key !== sceneKey) resetScene(data.participants, data.boosts);
+        const currentParticipant = data.participants.find(participant => String(participant.id) === String(viewerId));
+        if (currentParticipant) updateAvatarPicker(currentParticipant.appearance);
         lobbyCount.textContent = `${data.participants.length} учасник${data.participants.length === 1 ? '' : data.participants.length < 5 ? 'и' : 'ів'} у лобі`;
         if (data.boost_enabled) updateBoostButton(data.boosts[String(data.viewer_id)]);
     } catch (error) { console.error(error); }
@@ -139,6 +216,68 @@ if (boostButton) {
     });
 }
 
+document.querySelectorAll('[data-avatar-part]').forEach(button => {
+    button.addEventListener('click', async () => {
+        if (!viewerAppearance || button.disabled) return;
+        const part = button.dataset.avatarPart;
+        const options = part === 'headwear' ? headwearOptions : avatarOptions;
+        const direction = Number(button.dataset.avatarDirection);
+        const nextAppearance = {...viewerAppearance};
+        const currentIndex = options.indexOf(nextAppearance[part]);
+        nextAppearance[part] = currentIndex === -1
+            ? options[direction > 0 ? 0 : options.length - 1]
+            : options[(currentIndex + direction + options.length) % options.length];
+        updateAvatarPicker(nextAppearance);
+        button.disabled = true;
+        try {
+            const response = await fetch('/api/profile/avatar', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({appearance: nextAppearance}),
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(data.error || 'Не вдалося зберегти персонажа.');
+            updateAvatarPicker(data.appearance);
+            const updatedParticipants = sceneParticipants.map(participant =>
+                String(participant.id) === String(viewerId)
+                    ? {...participant, appearance: data.appearance}
+                    : participant
+            );
+            resetScene(updatedParticipants, sceneBoosts);
+        } catch (error) {
+            showToast(error.message || 'Не вдалося зберегти персонажа.', {type: 'error'});
+            pollLobby();
+        } finally {
+            button.disabled = false;
+        }
+    });
+});
+
+const removeHeadwearButton = document.getElementById('removeHeadwear');
+if (removeHeadwearButton) {
+    removeHeadwearButton.addEventListener('click', async () => {
+        if (!viewerAppearance || viewerAppearance.headwear === null || removeHeadwearButton.disabled) return;
+        const nextAppearance = {...viewerAppearance, headwear: null};
+        updateAvatarPicker(nextAppearance);
+        removeHeadwearButton.disabled = true;
+        try {
+            const response = await fetch('/api/profile/avatar', {
+                method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({appearance: nextAppearance}),
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(data.error || 'Не вдалося оновити персонажа.');
+            updateAvatarPicker(data.appearance);
+            resetScene(sceneParticipants.map(participant => String(participant.id) === String(viewerId)
+                ? {...participant, appearance: data.appearance} : participant), sceneBoosts);
+        } catch (error) {
+            showToast(error.message || 'Не вдалося оновити персонажа.', {type: 'error'});
+            pollLobby();
+        } finally {
+            removeHeadwearButton.disabled = false;
+        }
+    });
+}
+
 if (isHost) {
     document.getElementById('startQuiz').addEventListener('click', async () => {
         const button = document.getElementById('startQuiz');
@@ -157,6 +296,23 @@ if (isHost) {
     });
 }
 
+connectRoomSocket({
+    state(state) {
+        if (isHost && state.room_status !== 'lobby') {
+            window.location.href = '/admin';
+            return;
+        }
+        if (!isHost && state.activity_type === 'duel') {
+            window.location.href = '/activity';
+            return;
+        }
+        if (!isHost && state.activity_type === 'quiz' && state.activity_status === 'active') {
+            window.location.href = '/quiz';
+            return;
+        }
+        pollLobby();
+    },
+    presence() { pollLobby(); },
+});
 pollLobby();
-setInterval(pollLobby, 2500);
 requestAnimationFrame(animate);

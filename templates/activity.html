@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Дуель · {{ room.title }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="{{ url_for('static', filename='js/toast.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/leave-modal.js') }}"></script>
+</head>
+<body class="dv-finish-page">
+    <main class="roulette-overlay activity-stage">
+        <section class="roulette-card" aria-live="polite">
+            <div class="roulette-admin-head"><div><div class="eyebrow">LIVE ACTIVITY · {{ room.code }}</div><h2>ДВИЖ-ДУЕЛЬ</h2></div><form action="{{ url_for('leave_room') }}" method="post" data-confirm-leave><button class="secondary-btn" type="submit">Вийти</button></form></div>
+            <div class="roulette-wheel-shell"><span class="roulette-pointer">▼</span><div id="duelWheel" class="roulette-wheel"><div id="duelWheelName" class="roulette-wheel-name">Обираємо учасників…</div></div></div>
+            <p id="duelQuestion" class="roulette-question"></p>
+            <div id="duelParticipants" class="roulette-participants"></div>
+            <div id="duelAction"></div>
+            <p id="duelNotice" class="muted"></p>
+        </section>
+    </main>
+    <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+    <script src="{{ url_for('static', filename='js/room-socket.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/duel.js') }}"></script>
+</body>
+</html>

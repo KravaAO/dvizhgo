@@ -8,7 +8,7 @@
     <script src="{{ url_for('static', filename='js/toast.js') }}"></script>
     <script src="{{ url_for('static', filename='js/leave-modal.js') }}"></script>
 </head>
-<body class="admin-page">
+<body class="admin-page dv-host-page">
 {% if not authenticated %}
     <main class="center-shell">
         <section class="glass-card admin-login">
@@ -23,38 +23,74 @@
         </section>
     </main>
 {% else %}
-    <header class="admin-header">
-        <div>
-            <div class="eyebrow">ROOM HOST · {{ room.code }}</div>
-            <h1>{{ room.title }}</h1>
+    <header class="dv-host-header">
+        <a class="dv-host-brand" href="{{ url_for('admin') }}" aria-label="DvizhGO · квізи кімнати">Dvizh<span>GO</span></a>
+        <div class="dv-host-room-meta">
+            <span>КІМНАТА</span>
+            <strong>{{ room.title }}</strong>
+            <code>{{ room.code }}</code>
         </div>
-        <div class="admin-actions">
-            <a class="secondary-btn" href="{{ url_for('host_lobby') }}">Лобі</a>
-            <a class="secondary-btn" href="{{ url_for('quizzes') }}">Квізи</a>
-            <button id="openRoulette" class="primary-btn" type="button">🎡 Запустити рулетку</button>
-            <button id="resetResults" class="danger-btn">Очистити результати</button>
+        <div class="dv-host-actions">
+            {% if room.status == 'lobby' %}
+                <a class="dv-host-button dv-host-button-light" href="{{ url_for('host_lobby') }}">Лобі</a>
+            {% endif %}
+            <a class="dv-host-button dv-host-button-light" href="{{ url_for('quizzes') }}">Квізи</a>
+            <button id="openRoulette" class="dv-host-button dv-host-button-signal" type="button" {% if not current_activity or current_activity.type != 'quiz' %}disabled title="ДВИЖ-ДУЕЛЬ доступний під час активного квізу"{% endif %}>ДВИЖ-ДУЕЛЬ × 2</button>
+            {% if current_activity and current_activity.type == 'quiz' %}
+                <button id="returnToLobby" class="dv-host-button dv-host-button-light" type="button" disabled title="Стає доступною, коли всі завершили квіз">До лобі</button>
+            {% endif %}
+            <button id="resetResults" class="dv-host-button dv-host-button-danger" type="button">Скинути</button>
             <form action="{{ url_for('admin_logout') }}" method="post" data-confirm-leave>
-                <button class="secondary-btn" type="submit">Вийти</button>
+                <button class="dv-host-button dv-host-button-light" type="submit">Вийти</button>
             </form>
         </div>
     </header>
 
-    <main class="admin-shell">
+    <main class="admin-shell dv-host-shell">
+        <section id="roomActivityStage" class="dv-host-stage" data-activity-type="{{ current_activity.type if current_activity else 'lobby' }}" data-quiz-title="{{ quiz_title }}" data-quiz-count="{{ quiz_question_count }}">
+            <div class="dv-host-stage-copy">
+                <p id="roomActivityKicker" class="dv-host-micro">
+                    {% if current_activity and current_activity.type == 'duel' %}АКТИВНА EXTRA ACTIVITY{% elif current_activity and current_activity.type == 'quiz' %}АКТИВНИЙ КВІЗ{% else %}КВІЗИ КІМНАТИ{% endif %}
+                </p>
+                <h1 id="roomActivityTitle">
+                    {% if current_activity and current_activity.type == 'duel' %}ДВИЖ-ДУЕЛЬ{% elif current_activity and current_activity.type == 'quiz' %}{{ quiz_title }}{% else %}Квіз ще не запущено{% endif %}
+                </h1>
+                <p id="roomActivityDescription" class="dv-host-stage-description">
+                    {% if current_activity and current_activity.type == 'duel' %}{{ extra_round.question if extra_round else 'Учасники виконують Extra Activity.' }}{% elif current_activity and current_activity.type == 'quiz' %}Учасники самостійно проходять {{ quiz_question_count }} завдань.{% else %}Оберіть квіз, відкрийте лобі й запустіть заняття, коли всі готові.{% endif %}
+                </p>
+            </div>
+            <div class="dv-host-stage-state">
+                {% if current_activity and current_activity.type == 'duel' %}
+                    <span id="roomActivityStatus">LIVE · × 2</span>
+                    <strong id="roomActivityDetail">ДУЕЛЬ × 2</strong>
+                {% elif current_activity and current_activity.type == 'quiz' %}
+                    <span id="roomActivityStatus">LIVE</span>
+                    <strong id="roomActivityDetail">{{ quiz_question_count }} ЗАВДАНЬ</strong>
+                {% else %}
+                    <span id="roomActivityStatus">WAITING</span>
+                    <strong id="roomActivityDetail">—</strong>
+                {% endif %}
+            </div>
+            {% if not current_activity %}
+                <a class="dv-host-stage-link" href="{{ url_for('host_lobby') }}">Відкрити лобі <span>→</span></a>
+            {% endif %}
+        </section>
+
         <section class="stats-grid">
-            <div class="stat-card"><span>Підключено</span><strong id="statConnected">0</strong></div>
-            <div class="stat-card"><span>Завершили</span><strong id="statFinished">0</strong></div>
-            <div class="stat-card"><span>Проходять</span><strong id="statActive">0</strong></div>
+            <div class="stat-card"><span>У кімнаті</span><strong id="statConnected">0</strong></div>
+            <div class="stat-card"><span>Завершили квіз</span><strong id="statFinished">0</strong></div>
+            <div class="stat-card"><span>У процесі</span><strong id="statActive">0</strong></div>
         </section>
 
         <section class="admin-panel">
             <div class="roulette-admin-head">
-                <h2>🎡 Рулетка</h2>
+                <h2>ДВИЖ-ДУЕЛЬ</h2>
                 <div class="admin-actions">
-                    <span id="rouletteAdminStatus" class="status-pill active">Немає активного раунду</span>
-                    <button id="closeRoulette" class="secondary-btn hidden" type="button">Завершити рулетку</button>
+                    <span id="rouletteAdminStatus" class="status-pill active">Режим не активний</span>
+                    <button id="closeRoulette" class="dv-host-button dv-host-button-danger {% if not current_activity or current_activity.type != 'duel' %}hidden{% endif %}" type="button">Зупинити ДВИЖ-ДУЕЛЬ</button>
                 </div>
             </div>
-            <div id="rouletteAdminBody" class="roulette-summary">Host вводить питання, а система обирає двох активних учасників кімнати.</div>
+            <div id="rouletteAdminBody" class="roulette-summary">Творець кімнати задає виклик, а режим обирає двох активних учасників.</div>
         </section>
 
         <section class="admin-panel">
@@ -86,18 +122,32 @@
 
     <div id="rouletteModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="rouletteModalTitle">
         <section class="modal-card">
-            <h2 id="rouletteModalTitle">Нове питання для рулетки</h2>
+            <h2 id="rouletteModalTitle">Новий ДВИЖ-ДУЕЛЬ</h2>
             <form id="rouletteForm" class="modal-form">
-                <label for="rouletteQuestionInput">Питання для двох обраних учасників</label>
+                <label for="rouletteQuestionInput">Виклик для двох обраних учасників</label>
                 <textarea id="rouletteQuestionInput" name="question" maxlength="1000" required placeholder="Наприклад: Поясніть, для чого потрібен git commit."></textarea>
                 <div class="modal-actions">
                     <button id="closeRouletteModal" class="secondary-btn" type="button">Скасувати</button>
-                    <button class="primary-btn" type="submit">Запустити</button>
+                    <button class="primary-btn" type="submit">Почати дуель</button>
                 </div>
             </form>
         </section>
     </div>
 
+    <div id="stopDuelModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="stopDuelModalTitle">
+        <section class="modal-card dv-stop-duel-modal">
+            <p class="dv-host-micro">Підтвердження</p>
+            <h2 id="stopDuelModalTitle">Зупинити<br>ДВИЖ-ДУЕЛЬ?</h2>
+            <p class="dv-stop-duel-copy">Режим завершиться одразу, а учасники повернуться до активного квізу.</p>
+            <div class="modal-actions">
+                <button id="cancelStopDuel" class="dv-host-button dv-host-button-light" type="button">Продовжити режим</button>
+                <button id="confirmStopDuel" class="dv-host-button dv-stop-duel-confirm" type="button">Так, зупинити</button>
+            </div>
+        </section>
+    </div>
+
+    <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+    <script src="{{ url_for('static', filename='js/room-socket.js') }}"></script>
     <script>
     const body = document.getElementById('resultsBody');
     const details = document.getElementById('studentDetails');
@@ -115,6 +165,12 @@
         document.getElementById('statConnected').textContent = data.connected;
         document.getElementById('statFinished').textContent = data.finished;
         document.getElementById('statActive').textContent = data.active;
+        if (returnToLobbyButton) {
+            returnToLobbyButton.disabled = data.active > 0;
+            returnToLobbyButton.title = data.active > 0
+                ? 'Стає доступною, коли всі завершили квіз'
+                : 'Завершити квіз і повернутися в лобі';
+        }
 
         body.innerHTML = '';
         data.students.forEach(s => {
@@ -183,16 +239,56 @@
     const rouletteAdminBody = document.getElementById('rouletteAdminBody');
     const rouletteAdminStatus = document.getElementById('rouletteAdminStatus');
     const closeRouletteButton = document.getElementById('closeRoulette');
+    const stopDuelModal = document.getElementById('stopDuelModal');
+    const cancelStopDuelButton = document.getElementById('cancelStopDuel');
+    const confirmStopDuelButton = document.getElementById('confirmStopDuel');
+    const openRouletteButton = document.getElementById('openRoulette');
+    const returnToLobbyButton = document.getElementById('returnToLobby');
+    const roomActivityStage = document.getElementById('roomActivityStage');
+    const roomActivityKicker = document.getElementById('roomActivityKicker');
+    const roomActivityTitle = document.getElementById('roomActivityTitle');
+    const roomActivityDescription = document.getElementById('roomActivityDescription');
+    const roomActivityStatus = document.getElementById('roomActivityStatus');
+    const roomActivityDetail = document.getElementById('roomActivityDetail');
+
+    function showQuizActivityStage() {
+        if (!roomActivityStage) return;
+        const title = roomActivityStage.dataset.quizTitle || 'Квіз кімнати';
+        const count = roomActivityStage.dataset.quizCount || '0';
+        roomActivityStage.dataset.activityType = 'quiz';
+        roomActivityKicker.textContent = 'АКТИВНИЙ КВІЗ';
+        roomActivityTitle.textContent = title;
+        roomActivityDescription.textContent = `Учасники самостійно проходять ${count} завдань.`;
+        roomActivityStatus.textContent = 'LIVE';
+        roomActivityDetail.textContent = `${count} ЗАВДАНЬ`;
+        openRouletteButton.disabled = false;
+    }
+
+    function showDuelActivityStage(round) {
+        if (!roomActivityStage || !round) return;
+        roomActivityStage.dataset.activityType = 'duel';
+        roomActivityKicker.textContent = 'АКТИВНА EXTRA ACTIVITY';
+        roomActivityTitle.textContent = 'ДВИЖ-ДУЕЛЬ';
+        roomActivityDescription.textContent = round.question;
+        roomActivityStatus.textContent = round.status === 'voting' ? 'LIVE · ГОЛОСУВАННЯ' : 'LIVE · ВІДПОВІДІ';
+        roomActivityDetail.textContent = 'ДУЕЛЬ × 2';
+        openRouletteButton.disabled = true;
+    }
 
     function renderAdminRoulette(round) {
         if (!round) {
+            if (roomActivityStage && roomActivityStage.dataset.activityType === 'duel') {
+                window.location.reload();
+                return;
+            }
             closeRouletteButton.classList.add('hidden');
-            rouletteAdminStatus.textContent = 'Немає активного раунду';
+            rouletteAdminStatus.textContent = 'Режим не активний';
             rouletteAdminStatus.className = 'status-pill active';
-            rouletteAdminBody.textContent = 'Host вводить питання, а система обирає двох активних учасників кімнати.';
+            rouletteAdminBody.textContent = 'Творець кімнати задає виклик, а режим обирає двох активних учасників.';
             return;
         }
 
+        showDuelActivityStage(round);
         const isVoting = round.status === 'voting';
         closeRouletteButton.classList.remove('hidden');
         rouletteAdminStatus.textContent = isVoting ? 'Голосування' : 'Учасники відповідають';
@@ -222,18 +318,59 @@
         document.getElementById('rouletteQuestionInput').focus();
     });
 
+    if (returnToLobbyButton) {
+        returnToLobbyButton.addEventListener('click', async () => {
+            const response = await fetch('/api/admin/return-to-lobby', { method: 'POST' });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                showToast(data.error || 'Не вдалося завершити квіз.', { type: 'error' });
+                return;
+            }
+            window.location.href = '/lobby/host';
+        });
+    }
+
     document.getElementById('closeRouletteModal').addEventListener('click', () => {
         rouletteModal.classList.add('hidden');
     });
 
-    closeRouletteButton.addEventListener('click', async () => {
-        if (!confirm('Завершити рулетку та повернути всіх учасників до тесту?')) return;
-        const res = await fetch('/api/admin/roulette/close', { method: 'POST' });
-        if (res.ok) {
-            loadAdminRoulette();
-            showToast('Рулетку завершено. Учасники повернулися до тесту.', { type: 'success' });
-        } else {
-            showToast('Не вдалося завершити рулетку.', { type: 'error' });
+    function closeStopDuelModal({ restoreFocus = true } = {}) {
+        stopDuelModal.classList.add('hidden');
+        if (restoreFocus) closeRouletteButton.focus();
+    }
+
+    closeRouletteButton.addEventListener('click', () => {
+        stopDuelModal.classList.remove('hidden');
+        confirmStopDuelButton.focus();
+    });
+
+    cancelStopDuelButton.addEventListener('click', () => closeStopDuelModal());
+    stopDuelModal.addEventListener('click', event => {
+        if (event.target === stopDuelModal) closeStopDuelModal();
+    });
+
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && !stopDuelModal.classList.contains('hidden')) {
+            closeStopDuelModal();
+        }
+    });
+
+    confirmStopDuelButton.addEventListener('click', async () => {
+        confirmStopDuelButton.disabled = true;
+        try {
+            const res = await fetch('/api/admin/roulette/close', { method: 'POST' });
+            if (res.ok) {
+                closeStopDuelModal({ restoreFocus: false });
+                showQuizActivityStage();
+                showToast('ДВИЖ-ДУЕЛЬ завершено. Учасники повернулися до квіза.', { type: 'success' });
+                window.setTimeout(() => window.location.reload(), 350);
+                return;
+            }
+            showToast('Не вдалося завершити ДВИЖ-ДУЕЛЬ.', { type: 'error' });
+        } catch {
+            showToast('Немає зв’язку з сервером. Спробуйте ще раз.', { type: 'error' });
+        } finally {
+            confirmStopDuelButton.disabled = false;
         }
     });
 
@@ -250,19 +387,30 @@
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-            errorBox.textContent = data.error || 'Не вдалося запустити рулетку.';
+            errorBox.textContent = data.error || 'Не вдалося запустити ДВИЖ-ДУЕЛЬ.';
             return;
         }
         rouletteForm.reset();
         rouletteModal.classList.add('hidden');
         renderAdminRoulette(data.round);
-        showToast('Рулетка запущена.', { type: 'success' });
+        showToast('ДВИЖ-ДУЕЛЬ розпочато.', { type: 'success' });
     });
 
+    connectRoomSocket({
+        state(state) {
+            const activeType = state.activity_type || 'lobby';
+            if (roomActivityStage.dataset.activityType !== activeType) {
+                window.location.reload();
+                return;
+            }
+            loadResults();
+        },
+        presence() { loadResults(); },
+        results() { loadResults(); },
+        duel() { loadAdminRoulette(); },
+    });
     loadResults();
     loadAdminRoulette();
-    setInterval(loadResults, 3000);
-    setInterval(loadAdminRoulette, 3000);
     </script>
 {% endif %}
 </body>

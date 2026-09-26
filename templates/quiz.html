@@ -34,6 +34,10 @@
         <section id="questionCard" class="question-card">
             <h1>{{ question.question }}</h1>
 
+            {% if question.code %}
+                <pre class="code-block"><code>{{ question.code }}</code></pre>
+            {% endif %}
+
             {% if question.text %}
                 <p class="question-context">{{ question.text }}</p>
             {% endif %}
@@ -43,10 +47,6 @@
                 <span class="question-chip">{% if question.type == 'true_false' %}ТАК / НІ{% elif question.type == 'multiple' %}КІЛЬКА ВІДПОВІДЕЙ{% else %}ОДНА ВІДПОВІДЬ{% endif %}</span>
                 {% if question.difficulty %}<span class="difficulty">{% if question.difficulty == 'easy' %}ЛЕГКО{% elif question.difficulty == 'medium' %}СЕРЕДНЬО{% elif question.difficulty == 'hard' %}СКЛАДНО{% else %}{{ question.difficulty }}{% endif %}</span>{% endif %}
             </div>
-
-            {% if question.code %}
-                <pre class="code-block"><code>{{ question.code }}</code></pre>
-            {% endif %}
 
             <div id="answers" class="answers-grid">
                 {% for answer in question.answers %}
@@ -74,9 +74,9 @@
 
     <section id="rouletteOverlay" class="roulette-overlay hidden" aria-live="polite">
         <div class="roulette-card">
-            <div class="eyebrow">LIVE ROULETTE</div>
-            <h2>🎡 Рулетка кімнати</h2>
-            <div class="roulette-wheel-shell" aria-label="Рулетка обирає учасників">
+            <div class="eyebrow">LIVE ACTIVITY</div>
+            <h2>ДВИЖ-ДУЕЛЬ</h2>
+            <div class="roulette-wheel-shell" aria-label="ДВИЖ-ДУЕЛЬ обирає учасників">
                 <div id="rouletteWheel" class="roulette-wheel" aria-hidden="true"></div>
                 <span class="roulette-pointer" aria-hidden="true">▼</span>
                 <strong id="rouletteWheelName" class="roulette-wheel-name">Обираємо учасників…</strong>
@@ -88,6 +88,8 @@
         </div>
     </section>
 
+    <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+    <script src="{{ url_for('static', filename='js/room-socket.js') }}"></script>
     <script src="{{ url_for('static', filename='js/quiz.js') }}"></script>
 </body>
 </html>
