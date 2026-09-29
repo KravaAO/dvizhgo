@@ -16,6 +16,11 @@ services:
       timeout: 5s
       retries: 10
 
+    networks:
+      default:
+        aliases:
+          - dvizhgo-db
+
   redis:
     image: redis:7-alpine
     restart: unless-stopped
@@ -28,19 +33,30 @@ services:
       timeout: 5s
       retries: 10
 
+    networks:
+      default:
+        aliases:
+          - dvizhgo-redis
+
   web:
     build: .
     restart: unless-stopped
     ports:
-      - "5000:5000"
+      - "127.0.0.1:5000:5000"
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-quiz}:${POSTGRES_PASSWORD:-quiz_dev_password}@db:5432/${POSTGRES_DB:-quiz}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-quiz}:${POSTGRES_PASSWORD:-quiz_dev_password}@dvizhgo-db:5432/${POSTGRES_DB:-quiz}
       SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env}
       SHUFFLE_ANSWERS: ${SHUFFLE_ANSWERS:-true}
       SHUFFLE_QUESTIONS: ${SHUFFLE_QUESTIONS:-false}
-      SOCKETIO_MESSAGE_QUEUE: redis://redis:6379/0
+      SOCKETIO_MESSAGE_QUEUE: redis://dvizhgo-redis:6379/0
       AVATAR_LAB_PATH: ${AVATAR_LAB_PATH:?Set AVATAR_LAB_PATH in .env}
+    networks:
+      default:
+      msschool_default:
+        aliases:
+          - dvizhgo-web
+
     depends_on:
       db:
         condition: service_healthy
@@ -50,3 +66,7 @@ services:
 volumes:
   postgres_data:
   redis_data:
+
+networks:
+  msschool_default:
+    external: true
