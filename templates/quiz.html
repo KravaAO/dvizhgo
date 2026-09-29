@@ -63,7 +63,10 @@
 
             <div class="card-footer">
                 <span id="comboLabel" class="combo-label"></span>
-                <span id="answerResultBadge" class="answer-result-badge" aria-live="polite"></span>
+                <div class="answer-feedback-actions">
+                    <span id="answerResultBadge" class="answer-result-badge" aria-live="polite"></span>
+                    <button id="openExplanation" class="explanation-open" type="button" hidden>Відкрити пояснення правильної відповіді</button>
+                </div>
                 <button id="submitAnswer" class="primary-btn" type="button" disabled>Відповісти</button>
             </div>
         </section>
@@ -71,6 +74,22 @@
 
     <div id="characterLayer" class="character-layer" aria-hidden="true"></div>
     <div id="rainLayer" class="rain-layer" aria-hidden="true"></div>
+
+    <section id="explanationModal" class="explanation-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="explanationModalTitle" aria-hidden="true">
+        <div class="explanation-modal">
+            <div class="dv-micro">РОЗБІР ВІДПОВІДІ</div>
+            <h2 id="explanationModalTitle">Майже.</h2>
+            <div class="explanation-correct">
+                <span>ПРАВИЛЬНА ВІДПОВІДЬ</span>
+                <strong id="explanationCorrectAnswer"></strong>
+            </div>
+            <div class="explanation-copy">
+                <span>ЧОМУ ТАК</span>
+                <p id="explanationText"></p>
+            </div>
+            <button id="explanationNext" class="primary-btn" type="button">Повернутися до завдання</button>
+        </div>
+    </section>
 
     <section id="rouletteOverlay" class="roulette-overlay hidden" aria-live="polite">
         <div class="roulette-card">

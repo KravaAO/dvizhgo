@@ -3,24 +3,41 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Дуель · {{ room.title }}</title>
+    <title>{% if activity_type == 'duel' %}ДВИЖ-ДУЕЛЬ{% else %}Flash Question{% endif %} · {{ room.title }}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <script src="{{ url_for('static', filename='js/toast.js') }}"></script>
     <script src="{{ url_for('static', filename='js/leave-modal.js') }}"></script>
 </head>
-<body class="dv-finish-page">
+<body class="dv-finish-page" data-activity-type="{{ activity_type }}">
+    {% if activity_type == 'duel' %}
     <main class="roulette-overlay activity-stage">
         <section class="roulette-card" aria-live="polite">
-            <div class="roulette-admin-head"><div><div class="eyebrow">LIVE ACTIVITY · {{ room.code }}</div><h2>ДВИЖ-ДУЕЛЬ</h2></div><form action="{{ url_for('leave_room') }}" method="post" data-confirm-leave><button class="secondary-btn" type="submit">Вийти</button></form></div>
-            <div class="roulette-wheel-shell"><span class="roulette-pointer">▼</span><div id="duelWheel" class="roulette-wheel"><div id="duelWheelName" class="roulette-wheel-name">Обираємо учасників…</div></div></div>
+            <div class="roulette-admin-head"><div><div class="eyebrow">LIVE ACTIVITY · {{ room.code }}</div><h2>ДВИЖ-ДУЕЛЬ</h2></div></div>
+            <div class="roulette-wheel-shell"><span class="roulette-pointer">▼</span><div id="duelWheel" class="roulette-wheel"><div id="duelWheelCandidates" class="duel-wheel-candidates" aria-hidden="true"></div></div><div id="duelWheelName" class="roulette-wheel-name">Обираємо учасників…</div></div>
             <p id="duelQuestion" class="roulette-question"></p>
             <div id="duelParticipants" class="roulette-participants"></div>
             <div id="duelAction"></div>
             <p id="duelNotice" class="muted"></p>
         </section>
     </main>
+    {% else %}
+    <main class="flash-question-stage">
+        <header class="flash-question-head">
+            <div><div class="eyebrow">EXTRA / FLASH QUESTION · {{ room.code }}</div><h1>FLASH QUESTION</h1></div>
+            <form action="{{ url_for('leave_room') }}" method="post" data-confirm-leave><button class="secondary-btn" type="submit">Вийти</button></form>
+        </header>
+        <section class="flash-question-body" aria-live="polite">
+            <div id="flashQuestionLabel" class="flash-question-label">FLASH QUESTION · ВІДПОВІДАЮТЬ УСІ</div>
+            <h2 id="flashQuestionText">Готуємо Flash Question…</h2>
+            <div id="flashQuestionOptions" class="flash-question-options"></div>
+            <p id="flashQuestionNotice" class="flash-question-notice"></p>
+        </section>
+        <footer class="flash-question-footer"><strong id="flashQuestionTimer">--:--</strong><span id="flashQuestionCount">0 відповідей</span></footer>
+    </main>
+    {% endif %}
     <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
     <script src="{{ url_for('static', filename='js/room-socket.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/duel.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/extra-intro.js') }}"></script>
+    {% if activity_type == 'duel' %}<script src="{{ url_for('static', filename='js/duel.js') }}"></script>{% else %}<script src="{{ url_for('static', filename='js/flash-question.js') }}"></script>{% endif %}
 </body>
 </html>

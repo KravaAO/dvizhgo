@@ -16,10 +16,10 @@
         </div>
     </aside>
     <section class="dv-student-arena-wrap">
-        <div id="dvdAvatars" class="dvd-stage dv-student-arena"><div class="dv-arena-label">LOBBY / WAITING ROOM</div></div>
+        <div id="dvdAvatars" class="dvd-stage dv-student-arena"><div class="dv-arena-label">LOBBY / WAITING ROOM</div><div class="dv-dvd-disabled"><strong>DVD-СЦЕНУ ПРИХОВАНО</strong><span>Вона з’явиться на ширшому екрані</span></div></div>
         <div class="dv-identity"><div class="dv-micro">ВАШ ПЕРСОНАЖ</div><strong>{{ participant_name }}</strong><span>ПОЗНАЧЕНИЙ YOU</span></div>
         <div class="dv-peek" aria-hidden="true">👀</div>
     </section>
 </main>
-<footer class="dv-student-footer"><div><strong>Чекаємо на старт</strong><span>HOST ГОТУЄ ЗАВДАННЯ</span></div><button class="dv-disabled-control" disabled>⚡ BOOST / SOON</button></footer>
+<footer class="dv-student-footer"><div><strong>Чекаємо на старт</strong><span>HOST ГОТУЄ ЗАВДАННЯ</span></div><button id="boostButton" class="dv-boost-control" type="button">⚡ BOOST</button></footer>
 </div><script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script><script src="{{ url_for('static', filename='js/room-socket.js') }}"></script><script src="{{ url_for('static', filename='js/lobby.js') }}"></script></body></html>

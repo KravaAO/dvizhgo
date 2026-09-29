@@ -29,6 +29,7 @@
         socket.on('room:presence', payload => dispatch('presence', payload));
         socket.on('room:results_updated', payload => dispatch('results', payload));
         socket.on('room:duel_updated', payload => dispatch('duel', payload));
+        socket.on('room:flash_question_updated', payload => dispatch('flash_question_updated', payload));
 
         window.setInterval(() => {
             if (socket && socket.connected) socket.emit('presence:heartbeat');

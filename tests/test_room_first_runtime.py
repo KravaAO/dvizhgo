@@ -59,6 +59,17 @@ class RoomFirstRuntimeTest(unittest.TestCase):
 
         self.assertEqual(host.post("/api/admin/roulette", json={"question": "Поясніть відповідь"}).status_code, 201)
 
+        duel_payload = first.get("/api/roulette/current").get_json()["round"]
+        conn = server.get_db()
+        duel_runtime = server.get_runtime(conn, room_id)
+        duel_activity = server.get_activity(conn, duel_runtime["current_activity_id"])
+        selected_order = json.loads(duel_activity["config_json"])["selected_participant_ids"]
+        conn.close()
+        self.assertEqual(
+            [participant["student_id"] for participant in duel_payload["participants"]],
+            selected_order,
+        )
+
         conn = server.get_db()
         attempt = server.get_active_attempt(conn, first_attempt["participant_id"], room_id)
         activity = server.get_activity(conn, attempt["activity_id"])
@@ -106,6 +117,131 @@ class RoomFirstRuntimeTest(unittest.TestCase):
         state = host.get("/api/lobby").get_json()
         current = next(item for item in state["participants"] if item["id"] == participant_id)
         self.assertEqual(current["presence_state"], "away")
+
+    def test_flash_question_pauses_quiz_and_resumes_after_close(self):
+        host = server.app.test_client()
+        host.post("/rooms")
+        with host.session_transaction() as host_session:
+            room_id = host_session["host_room_id"]
+        conn = server.get_db()
+        room_code = conn.execute("SELECT code FROM rooms WHERE id = ?", (room_id,)).fetchone()["code"]
+        conn.close()
+        participant = server.app.test_client()
+        participant.post("/join", data={"name": "Flash player", "code": room_code})
+        second_participant = server.app.test_client()
+        second_participant.post("/join", data={"name": "Second flash player", "code": room_code})
+        self.assertEqual(host.post("/api/lobby/start", json={"mode": "self_paced"}).status_code, 200)
+
+        invalid = host.post("/api/admin/flash-question", json={
+            "question": "Надто швидко?", "answers": ["Так", "Ні"], "correct_index": 0,
+            "duration_seconds": 5,
+        })
+        self.assertEqual(invalid.status_code, 400)
+
+        started = host.post("/api/admin/flash-question", json={
+            "question": "Що повертає len([1, 2])?", "answers": ["1", "2", "3"], "correct_index": 1,
+            "duration_seconds": 35,
+        })
+        self.assertEqual(started.status_code, 201)
+        started_flash = started.get_json()["flash_question"]
+        self.assertEqual(started_flash["duration_seconds"], 35)
+        self.assertIn("starts_at", started_flash)
+        self.assertIn("closes_at", started_flash)
+        self.assertEqual(started_flash["close_delay_seconds"], 5)
+        self.assertIn("server_time", started_flash)
+        self.assertEqual(participant.get("/quiz").location, "/activity")
+        answer = participant.post("/api/flash-question/answer", json={"selected_index": 1})
+        self.assertEqual(answer.status_code, 200)
+        answered_flash = answer.get_json()["flash_question"]
+        self.assertEqual(answered_flash["correct_index"], 1)
+        self.assertIsNone(answered_flash["completion_reason"])
+        self.assertFalse(answered_flash["all_answered"])
+
+        final_answer = second_participant.post("/api/flash-question/answer", json={"selected_index": 1})
+        self.assertEqual(final_answer.status_code, 200)
+        completed_flash = final_answer.get_json()["flash_question"]
+        self.assertEqual(completed_flash["completion_reason"], "all_answered")
+        self.assertTrue(completed_flash["all_answered"])
+        self.assertEqual(completed_flash["target_answer_count"], completed_flash["target_count"])
+
+        self.assertEqual(host.post("/api/admin/flash-question/close").status_code, 200)
+        conn = server.get_db()
+        runtime = server.get_runtime(conn, room_id)
+        resumed = server.get_activity(conn, runtime["current_activity_id"])
+        conn.close()
+        self.assertEqual((resumed["type"], resumed["status"]), ("quiz", "active"))
+
+    def test_flash_question_auto_resumes_quiz_after_five_second_countdown(self):
+        host = server.app.test_client()
+        host.post("/rooms")
+        with host.session_transaction() as host_session:
+            room_id = host_session["host_room_id"]
+        conn = server.get_db()
+        room_code = conn.execute("SELECT code FROM rooms WHERE id = ?", (room_id,)).fetchone()["code"]
+        conn.close()
+
+        participant = server.app.test_client()
+        participant.post("/join", data={"name": "Countdown player", "code": room_code})
+        host.post("/api/lobby/start", json={"mode": "self_paced"})
+        host.post("/api/admin/flash-question", json={
+            "question": "Автоповернення?", "answers": ["Так", "Ні"], "correct_index": 0,
+            "duration_seconds": 10,
+        })
+
+        conn = server.get_db()
+        flash = server.get_open_flash_question(conn, room_id)
+        config = json.loads(flash["config_json"])
+        config["ends_at"] = "2000-01-01T00:00:00"
+        config["closes_at"] = "2000-01-01T00:00:05"
+        conn.execute(
+            "UPDATE activities SET config_json = ? WHERE id = ?",
+            (json.dumps(config, ensure_ascii=False), flash["id"]),
+        )
+        conn.commit()
+        conn.close()
+
+        expired = participant.get("/api/flash-question/current")
+        self.assertEqual(expired.status_code, 200)
+        self.assertIsNone(expired.get_json()["flash_question"])
+        self.assertEqual(expired.get_json()["activity_type"], "quiz")
+
+        conn = server.get_db()
+        runtime = server.get_runtime(conn, room_id)
+        resumed = server.get_activity(conn, runtime["current_activity_id"])
+        conn.close()
+        self.assertEqual((resumed["type"], resumed["status"]), ("quiz", "active"))
+
+    def test_late_joiner_enters_quiz_or_current_extra_activity_with_attempt(self):
+        host = server.app.test_client()
+        host.post("/rooms")
+        with host.session_transaction() as host_session:
+            room_id = host_session["host_room_id"]
+        conn = server.get_db()
+        room_code = conn.execute("SELECT code FROM rooms WHERE id = ?", (room_id,)).fetchone()["code"]
+        conn.close()
+        first = server.app.test_client()
+        first.post("/join", data={"name": "First", "code": room_code})
+        host.post("/api/lobby/start", json={"mode": "self_paced"})
+
+        late_quiz = server.app.test_client()
+        self.assertEqual(late_quiz.post("/join", data={"name": "Late quiz", "code": room_code}).location, "/quiz")
+        with late_quiz.session_transaction() as late_session:
+            late_quiz_id = late_session["participant_id"]
+        conn = server.get_db()
+        runtime = server.get_runtime(conn, room_id)
+        quiz_activity = server.get_activity(conn, runtime["current_activity_id"])
+        self.assertIsNotNone(conn.execute("SELECT id FROM quiz_attempts WHERE activity_id = ? AND participant_id = ?", (quiz_activity["id"], late_quiz_id)).fetchone())
+        conn.close()
+
+        host.post("/api/admin/flash-question", json={"question": "Flash?", "answers": ["A", "B", "C"], "correct_index": 0})
+        late_event = server.app.test_client()
+        self.assertEqual(late_event.post("/join", data={"name": "Late event", "code": room_code}).location, "/activity")
+        with late_event.session_transaction() as late_session:
+            late_event_id = late_session["participant_id"]
+        conn = server.get_db()
+        quiz_attempt = conn.execute("SELECT id FROM quiz_attempts WHERE activity_id = ? AND participant_id = ?", (quiz_activity["id"], late_event_id)).fetchone()
+        conn.close()
+        self.assertIsNotNone(quiz_attempt)
 
     def test_completed_participant_can_return_to_lobby_while_host_stays_on_live_control(self):
         host = server.app.test_client()
@@ -198,6 +334,35 @@ class RoomFirstRuntimeTest(unittest.TestCase):
             json={"appearance": {"avatar": "not-an-asset", "headwear": "headwear-2"}},
         )
         self.assertEqual(invalid.status_code, 400)
+
+    def test_lobby_boost_is_shared_and_has_a_cooldown(self):
+        host = server.app.test_client()
+        host.post("/rooms")
+        with host.session_transaction() as host_session:
+            room_id = host_session["host_room_id"]
+        conn = server.get_db()
+        room_code = conn.execute("SELECT code FROM rooms WHERE id = ?", (room_id,)).fetchone()["code"]
+        conn.close()
+        participant = server.app.test_client()
+        participant.post("/join", data={"name": "Boost player", "code": room_code})
+
+        activated = participant.post("/api/lobby/boost")
+        self.assertEqual(activated.status_code, 200)
+        self.assertTrue(activated.get_json()["boost"]["active"])
+        state = participant.get("/api/lobby").get_json()
+        self.assertTrue(state["boost_enabled"])
+        self.assertTrue(state["boosts"][str(state["viewer_id"])]["active"])
+        self.assertEqual(participant.post("/api/lobby/boost").status_code, 409)
+        telemetry = participant.post("/api/lobby/dvd-telemetry", json={
+            "participants": 12,
+            "frames": 600,
+            "collisions": 18,
+            "dropped_frames": 0,
+            "max_frame_ms": 19.4,
+            "boost_active": True,
+        })
+        self.assertEqual(telemetry.status_code, 202)
+        self.assertTrue(telemetry.get_json()["ok"])
 
 
 if __name__ == "__main__":

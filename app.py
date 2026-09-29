@@ -1,6 +1,7 @@
 import json
 import random
 import hashlib
+import logging
 import secrets
 from datetime import datetime, timedelta
 
@@ -24,6 +25,7 @@ DATABASE_URL = settings.database_url
 QUESTIONS_PATH = BASE_DIR / "questions.json"
 
 app = create_app()
+app.logger.setLevel(logging.INFO)
 socketio = SocketIO(app, async_mode="threading", message_queue=settings.socketio_message_queue)
 
 ADMIN_PASSWORD = settings.admin_password
@@ -34,6 +36,15 @@ HEADWEAR_OPTIONS = (
     "headwear-1", "headwear-2", "headwear-3", "headwear-4", "headwear-5",
     "headwear-6", "headwear-7", "headwear-8", "headwear-9",
 )
+BOOST_DURATION_SECONDS = 5
+BOOST_COOLDOWN_SECONDS = 15
+LOBBY_BOOST_ACTIVE = True
+DVD_TELEMETRY_SEEN = {}
+FLASH_QUESTION_DEFAULT_SECONDS = 20
+FLASH_QUESTION_MIN_SECONDS = 10
+FLASH_QUESTION_MAX_SECONDS = 180
+FLASH_QUESTION_INTRO_SECONDS = 2
+FLASH_QUESTION_CLOSE_DELAY_SECONDS = 5
 
 
 def now_iso():
@@ -202,6 +213,25 @@ def touch_participant(conn, participant_id):
     )
 
 
+def lobby_boost_state(conn, room_id):
+    now = datetime.now()
+    rows = conn.execute(
+        "SELECT participant_id, boosted_until, cooldown_until FROM room_lobby_boosts WHERE room_id = ?",
+        (room_id,),
+    ).fetchall()
+    state = {}
+    for row in rows:
+        boosted_until = datetime.fromisoformat(row["boosted_until"])
+        cooldown_until = datetime.fromisoformat(row["cooldown_until"])
+        cooldown_seconds = max(0, int((cooldown_until - now).total_seconds() + .999))
+        state[str(row["participant_id"])] = {
+            "active": boosted_until > now,
+            "boosted_until": row["boosted_until"],
+            "cooldown_seconds": cooldown_seconds,
+        }
+    return state
+
+
 def get_runtime(conn, room_id):
     runtime = conn.execute("SELECT * FROM room_runtime WHERE room_id = ?", (room_id,)).fetchone()
     if runtime:
@@ -298,6 +328,43 @@ def activity_questions(activity):
 
 def activity_question_map(activity):
     return {question["id"]: question for question in activity_questions(activity)}
+
+
+def resumed_quiz_activity(conn, activity):
+    """Find the quiz that a live extra activity will return to."""
+    if not activity:
+        return None
+    if activity["type"] == "quiz":
+        return activity
+    try:
+        resume_activity_id = json.loads(activity["config_json"] or "{}").get("resume_activity_id")
+    except (TypeError, json.JSONDecodeError):
+        return None
+    quiz_activity = get_activity(conn, resume_activity_id)
+    return quiz_activity if quiz_activity and quiz_activity["type"] == "quiz" else None
+
+
+def create_late_quiz_attempt(conn, participant_id, quiz_activity):
+    """Give a late joiner an independent attempt without changing the class activity."""
+    existing = conn.execute(
+        "SELECT id FROM quiz_attempts WHERE activity_id = ? AND participant_id = ? AND abandoned_at IS NULL",
+        (quiz_activity["id"], participant_id),
+    ).fetchone()
+    if existing:
+        return existing["id"]
+    question_ids = [question["id"] for question in activity_questions(quiz_activity)]
+    if not question_ids:
+        return None
+    config = json.loads(quiz_activity["config_json"] or "{}")
+    if config.get("shuffle_questions"):
+        random.shuffle(question_ids)
+    return conn.insert_and_get_id(
+        """
+        INSERT INTO quiz_attempts (activity_id, participant_id, question_order_json, started_at)
+        VALUES (?, ?, ?, ?)
+        """,
+        (quiz_activity["id"], participant_id, json.dumps(question_ids), now_iso()),
+    )
 
 
 def get_current_host_room():
@@ -418,6 +485,168 @@ def get_open_duel(conn, room_id):
     ).fetchone()
 
 
+def get_open_flash_question(conn, room_id):
+    return conn.execute(
+        """
+        SELECT * FROM activities
+        WHERE room_id = ? AND type = 'flash_question' AND status = 'active'
+        ORDER BY id DESC LIMIT 1
+        """,
+        (room_id,),
+    ).fetchone()
+
+
+def flash_question_closes_at(activity, config):
+    closes_at = config.get("closes_at")
+    if closes_at:
+        return closes_at
+    ends_at = config.get("ends_at")
+    if not ends_at:
+        return None
+    return (datetime.fromisoformat(ends_at) + timedelta(
+        seconds=FLASH_QUESTION_CLOSE_DELAY_SECONDS
+    )).isoformat(timespec="seconds")
+
+
+def flash_question_target_status(conn, activity, config=None):
+    config = config or json.loads(activity["config_json"] or "{}")
+    raw_ids = config.get("target_participant_ids") or []
+    target_ids = sorted({int(participant_id) for participant_id in raw_ids if str(participant_id).isdigit()})
+    if not target_ids:
+        return 0, 0, False
+
+    placeholders = ",".join("?" for _ in target_ids)
+    active_rows = conn.execute(
+        f"SELECT id FROM room_participants WHERE left_at IS NULL AND id IN ({placeholders})",
+        target_ids,
+    ).fetchall()
+    active_ids = [row["id"] for row in active_rows]
+    if not active_ids:
+        return 0, 0, True
+
+    active_placeholders = ",".join("?" for _ in active_ids)
+    answered_count = conn.execute(
+        f"""
+        SELECT COUNT(*) AS count FROM flash_question_answers
+        WHERE activity_id = ? AND participant_id IN ({active_placeholders})
+        """,
+        (activity["id"], *active_ids),
+    ).fetchone()["count"]
+    return len(active_ids), answered_count, answered_count >= len(active_ids)
+
+
+def complete_flash_question_if_all_answered(conn, activity):
+    if not activity:
+        return False
+    config = json.loads(activity["config_json"] or "{}")
+    target_count, target_answer_count, all_answered = flash_question_target_status(conn, activity, config)
+    if not all_answered or not target_count or config.get("completion_reason"):
+        return False
+    ends_at = config.get("ends_at")
+    if ends_at and datetime.fromisoformat(ends_at) <= datetime.now():
+        return False
+
+    completed_at = datetime.now()
+    config["ends_at"] = completed_at.isoformat(timespec="seconds")
+    config["closes_at"] = (completed_at + timedelta(
+        seconds=FLASH_QUESTION_CLOSE_DELAY_SECONDS
+    )).isoformat(timespec="seconds")
+    config["completion_reason"] = "all_answered"
+    config["target_answer_count"] = target_answer_count
+    conn.execute(
+        "UPDATE activities SET config_json = ? WHERE id = ? AND status = 'active'",
+        (json.dumps(config, ensure_ascii=False), activity["id"]),
+    )
+    return True
+
+
+def finish_flash_question_activity(conn, activity):
+    """Finish one active Flash Question and restore its paused quiz atomically."""
+    updated = conn.execute(
+        "UPDATE activities SET status = 'finished', finished_at = ? WHERE id = ? AND status = 'active'",
+        (now_iso(), activity["id"]),
+    )
+    if updated.rowcount != 1:
+        return False
+
+    config = json.loads(activity["config_json"] or "{}")
+    runtime = get_runtime(conn, activity["room_id"])
+    if runtime["current_activity_id"] != activity["id"]:
+        return True
+    resume_activity_id = config.get("resume_activity_id")
+    if resume_activity_id:
+        conn.execute(
+            "UPDATE activities SET status = 'active', paused_at = NULL WHERE id = ? AND status = 'paused'",
+            (resume_activity_id,),
+        )
+        set_runtime(conn, activity["room_id"], resume_activity_id, "active")
+    else:
+        set_runtime(conn, activity["room_id"], None, "lobby")
+    return True
+
+
+def finish_flash_question_if_expired(conn, activity):
+    if not activity:
+        return False
+    config = json.loads(activity["config_json"] or "{}")
+    closes_at = flash_question_closes_at(activity, config)
+    if not closes_at or datetime.fromisoformat(closes_at) > datetime.now():
+        return False
+    return finish_flash_question_activity(conn, activity)
+
+
+def serialize_flash_question(conn, activity, participant_id=None, is_host=False):
+    if not activity:
+        return None
+    config = json.loads(activity["config_json"] or "{}")
+    answers = config.get("answers", [])
+    ends_at = config.get("ends_at")
+    duration_seconds = config.get("duration_seconds")
+    if duration_seconds is None and ends_at:
+        try:
+            duration_seconds = max(1, round(
+                (datetime.fromisoformat(ends_at) - datetime.fromisoformat(activity["started_at"])).total_seconds()
+            ))
+        except (TypeError, ValueError):
+            duration_seconds = FLASH_QUESTION_DEFAULT_SECONDS
+    duration_seconds = duration_seconds or FLASH_QUESTION_DEFAULT_SECONDS
+    deadline_reached = bool(ends_at and datetime.fromisoformat(ends_at) <= datetime.now())
+    submitted = None
+    if participant_id:
+        submitted = conn.execute(
+            "SELECT selected_index FROM flash_question_answers WHERE activity_id = ? AND participant_id = ?",
+            (activity["id"], participant_id),
+        ).fetchone()
+    answer_count = conn.execute(
+        "SELECT COUNT(*) AS count FROM flash_question_answers WHERE activity_id = ?",
+        (activity["id"],),
+    ).fetchone()["count"]
+    target_count, target_answer_count, all_answered = flash_question_target_status(conn, activity, config)
+    payload = {
+        "id": activity["id"],
+        "question": config.get("question", ""),
+        "answers": answers,
+        "duration_seconds": duration_seconds,
+        "starts_at": config.get("starts_at", activity["started_at"]),
+        "ends_at": ends_at,
+        "closes_at": flash_question_closes_at(activity, config),
+        "close_delay_seconds": FLASH_QUESTION_CLOSE_DELAY_SECONDS,
+        "completion_reason": config.get("completion_reason"),
+        "server_time": now_iso(),
+        "answer_count": answer_count,
+        "target_count": target_count,
+        "target_answer_count": target_answer_count,
+        "all_answered": all_answered,
+        "answered": bool(submitted),
+        "deadline_reached": deadline_reached,
+    }
+    if submitted or deadline_reached or is_host:
+        payload["correct_index"] = config.get("correct_index")
+    if submitted:
+        payload["selected_index"] = submitted["selected_index"]
+    return payload
+
+
 def clear_room_runtime(conn, room_id):
     """Remove activities/attempts but keep room participants and quiz content."""
     duel_ids = "SELECT id FROM duel_rounds WHERE room_id = ?"
@@ -431,6 +660,7 @@ def clear_room_runtime(conn, room_id):
     conn.execute(f"DELETE FROM duel_participants WHERE round_id IN ({duel_ids})", (room_id,))
     conn.execute("DELETE FROM duel_rounds WHERE room_id = ?", (room_id,))
     conn.execute(f"DELETE FROM quiz_attempt_answers WHERE attempt_id IN ({attempt_ids})", (room_id,))
+    conn.execute(f"DELETE FROM flash_question_answers WHERE activity_id IN ({activity_ids})", (room_id,))
     conn.execute(f"DELETE FROM quiz_attempts WHERE activity_id IN ({activity_ids})", (room_id,))
     conn.execute("DELETE FROM activities WHERE room_id = ?", (room_id,))
     # Delete legacy runtime records during the transition. The quiz library and
@@ -464,6 +694,11 @@ def serialize_roulette(conn, round_row, viewer_id=None):
     ).fetchall()
 
     participants = [dict(row) for row in participant_rows]
+    duel_activity = get_activity(conn, round_row["activity_id"])
+    activity_config = json.loads(duel_activity["config_json"] or "{}") if duel_activity else {}
+    selected_order = activity_config.get("selected_participant_ids") or []
+    selected_positions = {participant_id: index for index, participant_id in enumerate(selected_order)}
+    participants.sort(key=lambda participant: selected_positions.get(participant["student_id"], len(selected_positions)))
     participant_ids = {participant["student_id"] for participant in participants}
     user_vote = None
     if viewer_id:
@@ -539,6 +774,13 @@ def join_room():
         conn.close()
         return render_template("index.html", error="Кімнату не знайдено або її вже завершено."), 404
     participant_id, reconnect_token = create_room_participant(conn, room["id"], name)
+    runtime = get_runtime(conn, room["id"])
+    current_activity = get_activity(conn, runtime["current_activity_id"])
+    destination = "lobby"
+    if current_activity and current_activity["status"] == "active":
+        quiz_activity = resumed_quiz_activity(conn, current_activity)
+        if quiz_activity and create_late_quiz_attempt(conn, participant_id, quiz_activity):
+            destination = "activity" if current_activity["type"] in {"duel", "flash_question"} else "quiz"
     conn.commit()
     conn.close()
 
@@ -548,7 +790,7 @@ def join_room():
     session["participant_reconnect_token"] = reconnect_token
     session["sound_enabled"] = True
     emit_room_event(room["id"], "room:presence", {"participant_id": participant_id})
-    return redirect(url_for("lobby"))
+    return redirect(url_for("activity_stage" if destination == "activity" else destination))
 
 
 @app.get("/lobby")
@@ -566,9 +808,12 @@ def lobby():
     conn = get_db()
     touch_participant(conn, participant["id"])
     runtime = get_runtime(conn, room["id"])
+    current_activity = get_activity(conn, runtime["current_activity_id"])
     active_attempt = get_active_attempt(conn, participant["id"], room["id"])
     conn.commit()
     conn.close()
+    if current_activity and current_activity["type"] in {"duel", "flash_question"}:
+        return redirect(url_for("activity_stage"))
     if runtime["state"] == "active" and active_attempt and not active_attempt["finished_at"]:
         return redirect(url_for("quiz"))
     return render_template("lobby.html", room=room, participant_name=participant["display_name"])
@@ -609,6 +854,7 @@ def lobby_state():
     settings_json = json.loads(room["settings_json"] or "{}")
     now = datetime.now()
     active_attempt = get_active_attempt(conn, participant["id"], room_id) if participant else None
+    boosts = lobby_boost_state(conn, room_id)
     conn.commit()
     conn.close()
     participant_payload = []
@@ -628,8 +874,8 @@ def lobby_state():
         "runtime_version": runtime["version"],
         "current_activity_type": current_activity["type"] if current_activity else None,
         "has_active_attempt": bool(active_attempt and not active_attempt["finished_at"]),
-        "boosts": {},
-        "boost_enabled": settings.lobby_boost_enabled,
+        "boosts": boosts,
+        "boost_enabled": LOBBY_BOOST_ACTIVE,
         "viewer_id": participant["id"] if participant else None,
     })
 
@@ -682,9 +928,81 @@ def update_participant_avatar():
 
 @app.post("/api/lobby/boost")
 def lobby_boost():
-    # Boost remains intentionally inactive. It will be reintroduced on top of
-    # room_participants rather than the legacy students table.
-    return jsonify({"error": "Функцію boost тимчасово вимкнено."}), 404
+    if not LOBBY_BOOST_ACTIVE:
+        return jsonify({"error": "Boost тимчасово недоступний."}), 404
+    conn = get_db()
+    participant = current_participant(conn)
+    if not participant:
+        conn.close()
+        return jsonify({"error": "Немає активної сесії учасника."}), 401
+    room = conn.execute("SELECT status FROM rooms WHERE id = ?", (participant["room_id"],)).fetchone()
+    runtime = get_runtime(conn, participant["room_id"])
+    if not room or room["status"] != "lobby" or runtime["current_activity_id"]:
+        conn.close()
+        return jsonify({"error": "Boost доступний лише у лобі до старту квіза."}), 409
+    now = datetime.now()
+    existing = conn.execute(
+        "SELECT cooldown_until FROM room_lobby_boosts WHERE room_id = ? AND participant_id = ?",
+        (participant["room_id"], participant["id"]),
+    ).fetchone()
+    if existing and datetime.fromisoformat(existing["cooldown_until"]) > now:
+        seconds = max(1, int((datetime.fromisoformat(existing["cooldown_until"]) - now).total_seconds() + .999))
+        conn.close()
+        return jsonify({"error": f"Boost перезаряджається: ще {seconds} с."}), 409
+    boosted_until = now + timedelta(seconds=BOOST_DURATION_SECONDS)
+    cooldown_until = now + timedelta(seconds=BOOST_COOLDOWN_SECONDS)
+    conn.execute(
+        """
+        INSERT INTO room_lobby_boosts (room_id, participant_id, boosted_until, cooldown_until)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(room_id, participant_id) DO UPDATE SET
+            boosted_until = excluded.boosted_until,
+            cooldown_until = excluded.cooldown_until
+        """,
+        (participant["room_id"], participant["id"], boosted_until.isoformat(timespec="seconds"), cooldown_until.isoformat(timespec="seconds")),
+    )
+    touch_participant(conn, participant["id"])
+    conn.commit()
+    payload = lobby_boost_state(conn, participant["room_id"]).get(str(participant["id"]), {})
+    conn.close()
+    app.logger.info(
+        "dvd_boost room_id=%s participant_id=%s duration=%s cooldown=%s",
+        participant["room_id"], participant["id"], BOOST_DURATION_SECONDS, BOOST_COOLDOWN_SECONDS,
+    )
+    emit_room_event(participant["room_id"], "room:presence", {"participant_id": participant["id"], "boost": True})
+    return jsonify({"ok": True, "boost": payload})
+
+
+@app.post("/api/lobby/dvd-telemetry")
+def lobby_dvd_telemetry():
+    conn = get_db()
+    participant = current_participant(conn)
+    if not participant:
+        conn.close()
+        return jsonify({"error": "No active session"}), 401
+    touch_participant(conn, participant["id"])
+    conn.commit()
+    conn.close()
+    timestamp = datetime.now().timestamp()
+    previous = DVD_TELEMETRY_SEEN.get(participant["id"], 0)
+    if timestamp - previous < 8:
+        return jsonify({"ok": True, "throttled": True}), 202
+    DVD_TELEMETRY_SEEN[participant["id"]] = timestamp
+    data = request.get_json(silent=True) or {}
+
+    def metric(name, maximum):
+        try:
+            return max(0, min(maximum, int(float(data.get(name, 0)))))
+        except (TypeError, ValueError):
+            return 0
+
+    app.logger.info(
+        "dvd_metrics room_id=%s participant_id=%s participants=%s frames=%s collisions=%s dropped=%s max_frame_ms=%s max_correction_px=%s boost=%s",
+        participant["room_id"], participant["id"], metric("participants", 500), metric("frames", 2000),
+        metric("collisions", 100000), metric("dropped_frames", 10000), metric("max_frame_ms", 10000),
+        metric("max_correction_px", 1000), bool(data.get("boost_active")),
+    )
+    return jsonify({"ok": True}), 202
 
 
 @app.post("/api/lobby/start")
@@ -766,7 +1084,7 @@ def quiz():
         return redirect(url_for("lobby"))
     runtime = get_runtime(conn, participant["room_id"])
     current_activity = get_activity(conn, runtime["current_activity_id"])
-    if attempt["finished_at"] and current_activity and current_activity["type"] == "duel":
+    if current_activity and current_activity["type"] in {"duel", "flash_question"}:
         conn.commit()
         conn.close()
         return redirect(url_for("activity_stage"))
@@ -800,13 +1118,16 @@ def activity_stage():
         conn.close()
         return redirect(url_for("index"))
     touch_participant(conn, participant["id"])
-    round_row = get_open_duel(conn, participant["room_id"])
+    runtime = get_runtime(conn, participant["room_id"])
+    activity = get_activity(conn, runtime["current_activity_id"])
     room = conn.execute("SELECT * FROM rooms WHERE id = ?", (participant["room_id"],)).fetchone()
     conn.commit()
     conn.close()
-    if not round_row:
-        return redirect(url_for("lobby"))
-    return render_template("activity.html", room=room, participant_name=participant["display_name"])
+    if not activity or activity["type"] not in {"duel", "flash_question"}:
+        return redirect(url_for("quiz") if activity and activity["type"] == "quiz" else url_for("lobby"))
+    return render_template(
+        "activity.html", room=room, participant_name=participant["display_name"], activity_type=activity["type"],
+    )
 
 
 @app.post("/api/answer")
@@ -1040,6 +1361,86 @@ def roulette_vote():
     return jsonify({"round": payload})
 
 
+@app.get("/api/flash-question/current")
+def current_flash_question():
+    conn = get_db()
+    participant = current_participant(conn)
+    if not participant:
+        conn.close()
+        return jsonify({"error": "No active session"}), 401
+    touch_participant(conn, participant["id"])
+    activity = get_open_flash_question(conn, participant["room_id"])
+    completed_early = complete_flash_question_if_all_answered(conn, activity)
+    if completed_early:
+        activity = get_activity(conn, activity["id"])
+    auto_closed = finish_flash_question_if_expired(conn, activity)
+    if auto_closed:
+        activity = None
+    payload = serialize_flash_question(conn, activity, participant["id"])
+    runtime = get_runtime(conn, participant["room_id"])
+    next_activity = get_activity(conn, runtime["current_activity_id"])
+    conn.commit()
+    conn.close()
+    if auto_closed:
+        emit_room_state(participant["room_id"])
+    elif completed_early:
+        emit_room_event(participant["room_id"], "room:flash_question_updated")
+    return jsonify({
+        "flash_question": payload,
+        "activity_type": next_activity["type"] if next_activity else None,
+    })
+
+
+@app.post("/api/flash-question/answer")
+def answer_flash_question():
+    data = request.get_json(silent=True) or {}
+    try:
+        selected_index = int(data.get("selected_index"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Оберіть варіант відповіді."}), 400
+
+    conn = get_db()
+    participant = current_participant(conn)
+    if not participant:
+        conn.close()
+        return jsonify({"error": "No active session"}), 401
+    touch_participant(conn, participant["id"])
+    activity = get_open_flash_question(conn, participant["room_id"])
+    if not activity:
+        conn.close()
+        return jsonify({"error": "Flash Question уже завершено."}), 409
+    config = json.loads(activity["config_json"] or "{}")
+    answers = config.get("answers", [])
+    if not 0 <= selected_index < len(answers):
+        conn.close()
+        return jsonify({"error": "Некоректний варіант відповіді."}), 400
+    if datetime.fromisoformat(config["ends_at"]) <= datetime.now():
+        conn.close()
+        return jsonify({"error": "Час на відповідь завершився."}), 409
+    existing = conn.execute(
+        "SELECT 1 FROM flash_question_answers WHERE activity_id = ? AND participant_id = ?",
+        (activity["id"], participant["id"]),
+    ).fetchone()
+    if existing:
+        conn.close()
+        return jsonify({"error": "Відповідь уже зарахована."}), 409
+    conn.execute(
+        """
+        INSERT INTO flash_question_answers (activity_id, participant_id, selected_index, answered_at)
+        VALUES (?, ?, ?, ?)
+        """,
+        (activity["id"], participant["id"], selected_index, now_iso()),
+    )
+    completed_early = complete_flash_question_if_all_answered(conn, activity)
+    if completed_early:
+        activity = get_activity(conn, activity["id"])
+    payload = serialize_flash_question(conn, activity, participant["id"])
+    conn.commit()
+    conn.close()
+    emit_room_event(participant["room_id"], "room:flash_question_updated")
+    return jsonify({"flash_question": payload})
+
+
 @app.get("/result")
 def result():
     conn = get_db()
@@ -1051,7 +1452,7 @@ def result():
     attempt = get_active_attempt(conn, participant["id"], participant["room_id"])
     runtime = get_runtime(conn, participant["room_id"])
     current_activity = get_activity(conn, runtime["current_activity_id"])
-    if current_activity and current_activity["type"] == "duel":
+    if current_activity and current_activity["type"] in {"duel", "flash_question"}:
         conn.commit()
         conn.close()
         return redirect(url_for("activity_stage"))
@@ -1306,7 +1707,14 @@ def start_roulette():
         INSERT INTO activities (room_id, type, status, config_json, started_at)
         VALUES (?, 'duel', 'active', ?, ?)
         """,
-        (room["id"], json.dumps({"resume_activity_id": quiz_activity["id"]}), now_iso()),
+        (
+            room["id"],
+            json.dumps({
+                "resume_activity_id": quiz_activity["id"],
+                "selected_participant_ids": [participant["id"] for participant in selected],
+            }),
+            now_iso(),
+        ),
     )
     round_id = conn.insert_and_get_id(
         """
@@ -1356,6 +1764,123 @@ def close_roulette():
         set_runtime(conn, room["id"], resume_activity_id, "active")
     else:
         set_runtime(conn, room["id"], None, "lobby")
+    conn.commit()
+    conn.close()
+    emit_room_state(room["id"])
+    return jsonify({"ok": True})
+
+
+@app.get("/api/admin/flash-question")
+def admin_flash_question():
+    room = get_current_host_room()
+    if not room:
+        return jsonify({"error": "Unauthorized"}), 401
+    conn = get_db()
+    activity = get_open_flash_question(conn, room["id"])
+    completed_early = complete_flash_question_if_all_answered(conn, activity)
+    if completed_early:
+        activity = get_activity(conn, activity["id"])
+    auto_closed = finish_flash_question_if_expired(conn, activity)
+    if auto_closed:
+        activity = None
+    payload = serialize_flash_question(conn, activity, is_host=True)
+    conn.commit()
+    conn.close()
+    if auto_closed:
+        emit_room_state(room["id"])
+    elif completed_early:
+        emit_room_event(room["id"], "room:flash_question_updated")
+    return jsonify({"flash_question": payload})
+
+
+@app.post("/api/admin/flash-question")
+def start_flash_question():
+    room = get_current_host_room()
+    if not room:
+        return jsonify({"error": "Unauthorized"}), 401
+    data = request.get_json(silent=True) or {}
+    question = str(data.get("question") or "").strip()
+    answers = data.get("answers")
+    try:
+        correct_index = int(data.get("correct_index"))
+    except (TypeError, ValueError):
+        correct_index = -1
+    try:
+        duration_seconds = int(data.get("duration_seconds", FLASH_QUESTION_DEFAULT_SECONDS))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Вкажіть час на відповідь у секундах."}), 400
+    if not question or len(question) > 1000 or not isinstance(answers, list):
+        return jsonify({"error": "Додайте питання та варіанти відповідей."}), 400
+    answers = [str(answer).strip()[:240] for answer in answers if str(answer).strip()]
+    if not 2 <= len(answers) <= 4 or not 0 <= correct_index < len(answers):
+        return jsonify({"error": "Потрібно 2–4 варіанти й одна правильна відповідь."}), 400
+    if not FLASH_QUESTION_MIN_SECONDS <= duration_seconds <= FLASH_QUESTION_MAX_SECONDS:
+        return jsonify({
+            "error": f"Час Flash Question має бути від {FLASH_QUESTION_MIN_SECONDS} до {FLASH_QUESTION_MAX_SECONDS} секунд."
+        }), 400
+
+    conn = get_db()
+    runtime = get_runtime(conn, room["id"])
+    quiz_activity = get_activity(conn, runtime["current_activity_id"])
+    if not quiz_activity or quiz_activity["type"] != "quiz" or quiz_activity["status"] != "active":
+        conn.close()
+        return jsonify({"error": "Flash Question доступне лише під час активного квізу."}), 409
+    online_threshold = datetime.now() - timedelta(seconds=60)
+    participant_rows = conn.execute(
+        "SELECT id, last_seen_at FROM room_participants WHERE room_id = ? AND left_at IS NULL ORDER BY id",
+        (room["id"],),
+    ).fetchall()
+    target_participant_ids = [
+        row["id"] for row in participant_rows
+        if datetime.fromisoformat(row["last_seen_at"]) >= online_threshold
+    ]
+    started_at = datetime.now()
+    starts_at = started_at + timedelta(seconds=FLASH_QUESTION_INTRO_SECONDS)
+    ends_at = starts_at + timedelta(seconds=duration_seconds)
+    closes_at = ends_at + timedelta(seconds=FLASH_QUESTION_CLOSE_DELAY_SECONDS)
+    conn.execute(
+        "UPDATE activities SET status = 'paused', paused_at = ? WHERE id = ?",
+        (started_at.isoformat(timespec="seconds"), quiz_activity["id"]),
+    )
+    activity_id = conn.insert_and_get_id(
+        """
+        INSERT INTO activities (room_id, type, status, config_json, started_at)
+        VALUES (?, 'flash_question', 'active', ?, ?)
+        """,
+        (
+            room["id"],
+            json.dumps({
+                "resume_activity_id": quiz_activity["id"], "question": question,
+                "answers": answers, "correct_index": correct_index,
+                "duration_seconds": duration_seconds,
+                "target_participant_ids": target_participant_ids,
+                "starts_at": starts_at.isoformat(timespec="seconds"),
+                "ends_at": ends_at.isoformat(timespec="seconds"),
+                "closes_at": closes_at.isoformat(timespec="seconds"),
+            }, ensure_ascii=False),
+            started_at.isoformat(timespec="seconds"),
+        ),
+    )
+    set_runtime(conn, room["id"], activity_id, "active")
+    conn.commit()
+    payload = serialize_flash_question(conn, get_activity(conn, activity_id), is_host=True)
+    conn.close()
+    emit_room_state(room["id"])
+    emit_room_event(room["id"], "room:flash_question_updated")
+    return jsonify({"flash_question": payload}), 201
+
+
+@app.post("/api/admin/flash-question/close")
+def close_flash_question():
+    room = get_current_host_room()
+    if not room:
+        return jsonify({"error": "Unauthorized"}), 401
+    conn = get_db()
+    activity = get_open_flash_question(conn, room["id"])
+    if not activity:
+        conn.close()
+        return jsonify({"error": "Немає активного Flash Question."}), 409
+    finish_flash_question_activity(conn, activity)
     conn.commit()
     conn.close()
     emit_room_state(room["id"])

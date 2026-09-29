@@ -17,6 +17,11 @@ const rouletteQuestion = document.getElementById("rouletteQuestion");
 const rouletteParticipants = document.getElementById("rouletteParticipants");
 const rouletteAction = document.getElementById("rouletteAction");
 const rouletteNotice = document.getElementById("rouletteNotice");
+const explanationModal = document.getElementById("explanationModal");
+const explanationCorrectAnswer = document.getElementById("explanationCorrectAnswer");
+const explanationText = document.getElementById("explanationText");
+const explanationNext = document.getElementById("explanationNext");
+const openExplanation = document.getElementById("openExplanation");
 
 const questionNumber = Number(page.dataset.questionNumber);
 const totalQuestions = Number(page.dataset.totalQuestions);
@@ -108,6 +113,8 @@ submitButton.addEventListener("click", () => {
     }
     submitAnswer();
 });
+explanationNext.addEventListener("click", closeExplanationModal);
+openExplanation.addEventListener("click", showExplanationModal);
 soundToggle.addEventListener("click", () => {
     soundEnabled = !soundEnabled;
     localStorage.setItem("quizSound", soundEnabled ? "on" : "off");
@@ -382,10 +389,33 @@ function showNextQuestionButton(finished) {
     submitButton.focus();
 }
 
+function prepareExplanation(data) {
+    const correctAnswers = data.correct_answers
+        .map(index => question.answers.find(answer => Number(answer.original_index) === Number(index))?.text)
+        .filter(Boolean);
+
+    explanationCorrectAnswer.textContent = correctAnswers.join(" · ") || "Дивись правильний варіант вище.";
+    explanationText.textContent = data.explanation || "Переглянь правильну відповідь і спробуй застосувати це в наступному завданні.";
+    openExplanation.hidden = false;
+}
+
+function showExplanationModal() {
+    explanationModal.classList.add("open");
+    explanationModal.setAttribute("aria-hidden", "false");
+    explanationNext.focus();
+}
+
+function closeExplanationModal() {
+    explanationModal.classList.remove("open");
+    explanationModal.setAttribute("aria-hidden", "true");
+    submitButton.focus();
+}
+
 function goToNextQuestion() {
     if (!awaitingNext || !nextUrl) return;
 
     awaitingNext = false;
+    closeExplanationModal();
     submitButton.disabled = true;
     stopActiveSound();
     stopRain();
@@ -467,6 +497,7 @@ async function submitAnswer() {
 
         if (!data.is_correct) {
             showNextQuestionButton(data.finished);
+            prepareExplanation(data);
             return;
         }
 
@@ -508,7 +539,7 @@ function markWrongAndCorrect(correctIndexes) {
 
 connectRoomSocket({
     state(state) {
-        if (state.activity_type === 'duel') {
+        if (['duel', 'flash_question'].includes(state.activity_type)) {
             window.location.href = '/activity';
             return;
         }

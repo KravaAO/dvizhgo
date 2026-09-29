@@ -36,6 +36,7 @@
             {% endif %}
             <a class="dv-host-button dv-host-button-light" href="{{ url_for('quizzes') }}">Квізи</a>
             <button id="openRoulette" class="dv-host-button dv-host-button-signal" type="button" {% if not current_activity or current_activity.type != 'quiz' %}disabled title="ДВИЖ-ДУЕЛЬ доступний під час активного квізу"{% endif %}>ДВИЖ-ДУЕЛЬ × 2</button>
+            <button id="openFlashQuestion" class="dv-host-button dv-host-button-signal" type="button" {% if not current_activity or current_activity.type != 'quiz' %}disabled title="Flash Question доступне під час активного квізу"{% endif %}>FLASH QUESTION</button>
             {% if current_activity and current_activity.type == 'quiz' %}
                 <button id="returnToLobby" class="dv-host-button dv-host-button-light" type="button" disabled title="Стає доступною, коли всі завершили квіз">До лобі</button>
             {% endif %}
@@ -50,19 +51,22 @@
         <section id="roomActivityStage" class="dv-host-stage" data-activity-type="{{ current_activity.type if current_activity else 'lobby' }}" data-quiz-title="{{ quiz_title }}" data-quiz-count="{{ quiz_question_count }}">
             <div class="dv-host-stage-copy">
                 <p id="roomActivityKicker" class="dv-host-micro">
-                    {% if current_activity and current_activity.type == 'duel' %}АКТИВНА EXTRA ACTIVITY{% elif current_activity and current_activity.type == 'quiz' %}АКТИВНИЙ КВІЗ{% else %}КВІЗИ КІМНАТИ{% endif %}
+                    {% if current_activity and current_activity.type == 'duel' %}АКТИВНА EXTRA ACTIVITY{% elif current_activity and current_activity.type == 'flash_question' %}АКТИВНА EXTRA ACTIVITY{% elif current_activity and current_activity.type == 'quiz' %}АКТИВНИЙ КВІЗ{% else %}КВІЗИ КІМНАТИ{% endif %}
                 </p>
                 <h1 id="roomActivityTitle">
-                    {% if current_activity and current_activity.type == 'duel' %}ДВИЖ-ДУЕЛЬ{% elif current_activity and current_activity.type == 'quiz' %}{{ quiz_title }}{% else %}Квіз ще не запущено{% endif %}
+                    {% if current_activity and current_activity.type == 'duel' %}ДВИЖ-ДУЕЛЬ{% elif current_activity and current_activity.type == 'flash_question' %}FLASH QUESTION{% elif current_activity and current_activity.type == 'quiz' %}{{ quiz_title }}{% else %}Квіз ще не запущено{% endif %}
                 </h1>
                 <p id="roomActivityDescription" class="dv-host-stage-description">
-                    {% if current_activity and current_activity.type == 'duel' %}{{ extra_round.question if extra_round else 'Учасники виконують Extra Activity.' }}{% elif current_activity and current_activity.type == 'quiz' %}Учасники самостійно проходять {{ quiz_question_count }} завдань.{% else %}Оберіть квіз, відкрийте лобі й запустіть заняття, коли всі готові.{% endif %}
+                    {% if current_activity and current_activity.type == 'duel' %}{{ extra_round.question if extra_round else 'Учасники виконують Extra Activity.' }}{% elif current_activity and current_activity.type == 'flash_question' %}Усі учасники відповідають на швидке питання. Час визначив творець кімнати.{% elif current_activity and current_activity.type == 'quiz' %}Учасники самостійно проходять {{ quiz_question_count }} завдань.{% else %}Оберіть квіз, відкрийте лобі й запустіть заняття, коли всі готові.{% endif %}
                 </p>
             </div>
             <div class="dv-host-stage-state">
                 {% if current_activity and current_activity.type == 'duel' %}
                     <span id="roomActivityStatus">LIVE · × 2</span>
                     <strong id="roomActivityDetail">ДУЕЛЬ × 2</strong>
+                {% elif current_activity and current_activity.type == 'flash_question' %}
+                    <span id="roomActivityStatus">LIVE · FLASH</span>
+                    <strong id="roomActivityDetail">FLASH</strong>
                 {% elif current_activity and current_activity.type == 'quiz' %}
                     <span id="roomActivityStatus">LIVE</span>
                     <strong id="roomActivityDetail">{{ quiz_question_count }} ЗАВДАНЬ</strong>
@@ -91,6 +95,14 @@
                 </div>
             </div>
             <div id="rouletteAdminBody" class="roulette-summary">Творець кімнати задає виклик, а режим обирає двох активних учасників.</div>
+        </section>
+
+        <section class="admin-panel">
+            <div class="roulette-admin-head">
+                <h2>FLASH QUESTION</h2>
+                <div class="admin-actions"><span id="flashQuestionAdminStatus" class="status-pill active">{% if current_activity and current_activity.type == 'flash_question' %}Учасники відповідають{% else %}Режим не активний{% endif %}</span><button id="closeFlashQuestion" class="dv-host-button dv-host-button-danger {% if not current_activity or current_activity.type != 'flash_question' %}hidden{% endif %}" type="button">Завершити Flash Question</button></div>
+            </div>
+            <div id="flashQuestionAdminBody" class="roulette-summary">Швидке питання для всіх учасників. Творець кімнати задає час, а квіз автоматично стає на паузу.</div>
         </section>
 
         <section class="admin-panel">
@@ -130,6 +142,26 @@
                     <button id="closeRouletteModal" class="secondary-btn" type="button">Скасувати</button>
                     <button class="primary-btn" type="submit">Почати дуель</button>
                 </div>
+            </form>
+        </section>
+    </div>
+
+    <div id="flashQuestionModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="flashQuestionModalTitle">
+        <section class="modal-card">
+            <h2 id="flashQuestionModalTitle">Нове Flash Question</h2>
+            <form id="flashQuestionForm" class="modal-form">
+                <label for="flashQuestionInput">Питання для всіх учасників</label>
+                <textarea id="flashQuestionInput" name="question" maxlength="1000" required></textarea>
+                <label>Варіанти відповідей</label>
+                <input name="answer" maxlength="240" required placeholder="Варіант A">
+                <input name="answer" maxlength="240" required placeholder="Варіант B">
+                <input name="answer" maxlength="240" required placeholder="Варіант C">
+                <label for="flashCorrectIndex">Правильна відповідь</label>
+                <select id="flashCorrectIndex" name="correct_index"><option value="0">Варіант A</option><option value="1">Варіант B</option><option value="2">Варіант C</option></select>
+                <label for="flashQuestionDuration">Час на відповідь, секунд</label>
+                <input id="flashQuestionDuration" name="duration_seconds" type="number" min="10" max="180" step="5" value="20" required inputmode="numeric">
+                <p class="muted">Від 10 секунд до 3 хвилин. Таймер почнеться після вступної анімації.</p>
+                <div class="modal-actions"><button id="closeFlashQuestionModal" class="secondary-btn" type="button">Скасувати</button><button class="primary-btn" type="submit">Запустити Flash</button></div>
             </form>
         </section>
     </div>
@@ -243,6 +275,12 @@
     const cancelStopDuelButton = document.getElementById('cancelStopDuel');
     const confirmStopDuelButton = document.getElementById('confirmStopDuel');
     const openRouletteButton = document.getElementById('openRoulette');
+    const openFlashQuestionButton = document.getElementById('openFlashQuestion');
+    const flashQuestionModal = document.getElementById('flashQuestionModal');
+    const flashQuestionForm = document.getElementById('flashQuestionForm');
+    const closeFlashQuestionButton = document.getElementById('closeFlashQuestion');
+    const flashQuestionAdminStatus = document.getElementById('flashQuestionAdminStatus');
+    const flashQuestionAdminBody = document.getElementById('flashQuestionAdminBody');
     const returnToLobbyButton = document.getElementById('returnToLobby');
     const roomActivityStage = document.getElementById('roomActivityStage');
     const roomActivityKicker = document.getElementById('roomActivityKicker');
@@ -250,6 +288,14 @@
     const roomActivityDescription = document.getElementById('roomActivityDescription');
     const roomActivityStatus = document.getElementById('roomActivityStatus');
     const roomActivityDetail = document.getElementById('roomActivityDetail');
+    let currentAdminFlash = null;
+    let adminFlashClockOffset = 0;
+    let adminFlashCloseRequested = false;
+
+    function formatCountdown(totalSeconds) {
+        const seconds = Math.max(0, Math.ceil(totalSeconds || 0));
+        return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+    }
 
     function showQuizActivityStage() {
         if (!roomActivityStage) return;
@@ -262,6 +308,7 @@
         roomActivityStatus.textContent = 'LIVE';
         roomActivityDetail.textContent = `${count} ЗАВДАНЬ`;
         openRouletteButton.disabled = false;
+        openFlashQuestionButton.disabled = false;
     }
 
     function showDuelActivityStage(round) {
@@ -273,6 +320,19 @@
         roomActivityStatus.textContent = round.status === 'voting' ? 'LIVE · ГОЛОСУВАННЯ' : 'LIVE · ВІДПОВІДІ';
         roomActivityDetail.textContent = 'ДУЕЛЬ × 2';
         openRouletteButton.disabled = true;
+        openFlashQuestionButton.disabled = true;
+    }
+
+    function showFlashActivityStage(flash) {
+        if (!roomActivityStage || !flash) return;
+        roomActivityStage.dataset.activityType = 'flash_question';
+        roomActivityKicker.textContent = 'АКТИВНА EXTRA ACTIVITY';
+        roomActivityTitle.textContent = 'FLASH QUESTION';
+        roomActivityDescription.textContent = flash.question;
+        roomActivityStatus.textContent = `LIVE · ${flash.duration_seconds} СЕК`;
+        roomActivityDetail.textContent = 'FLASH';
+        openRouletteButton.disabled = true;
+        openFlashQuestionButton.disabled = true;
     }
 
     function renderAdminRoulette(round) {
@@ -313,9 +373,99 @@
         renderAdminRoulette(data.round);
     }
 
+    function renderAdminFlash(flash) {
+        currentAdminFlash = flash;
+        if (!flash) {
+            if (roomActivityStage && roomActivityStage.dataset.activityType === 'flash_question') {
+                window.location.reload();
+                return;
+            }
+            closeFlashQuestionButton.classList.add('hidden');
+            flashQuestionAdminStatus.textContent = 'Режим не активний';
+            flashQuestionAdminStatus.className = 'status-pill active';
+            flashQuestionAdminBody.textContent = 'Швидке питання для всіх учасників. Творець кімнати задає час, а квіз автоматично стає на паузу.';
+            return;
+        }
+
+        const parsedServerTime = Date.parse(flash.server_time);
+        if (Number.isFinite(parsedServerTime)) adminFlashClockOffset = parsedServerTime - Date.now();
+        showFlashActivityStage(flash);
+        closeFlashQuestionButton.classList.remove('hidden');
+        flashQuestionAdminStatus.className = `status-pill ${flash.deadline_reached ? 'done' : 'active'}`;
+        flashQuestionAdminBody.innerHTML = `
+            <p><strong>Питання:</strong> ${escapeHtml(flash.question)}</p>
+            <p><strong>Час:</strong> ${flash.duration_seconds} с · <strong>Відповіли:</strong> ${flash.target_answer_count}/${flash.target_count || '—'}</p>
+        `;
+        updateAdminFlashTimer();
+    }
+
+    function updateAdminFlashTimer() {
+        if (!currentAdminFlash?.ends_at) return;
+        const remaining = Math.max(0, (Date.parse(currentAdminFlash.ends_at) - (Date.now() + adminFlashClockOffset)) / 1000);
+        const timedOut = remaining <= 0 || currentAdminFlash.deadline_reached;
+        if (timedOut) {
+            const closeRemaining = Math.max(0, (Date.parse(currentAdminFlash.closes_at) - (Date.now() + adminFlashClockOffset)) / 1000);
+            const completionLabel = currentAdminFlash.completion_reason === 'all_answered' ? 'Усі відповіли' : 'Час завершився';
+            flashQuestionAdminStatus.textContent = closeRemaining > 0
+                ? `${completionLabel} · ${formatCountdown(closeRemaining)}`
+                : 'Повертаємося до квіза';
+            flashQuestionAdminStatus.className = 'status-pill done';
+            if (closeRemaining <= 0 && !adminFlashCloseRequested) {
+                adminFlashCloseRequested = true;
+                loadAdminFlash().catch(() => { adminFlashCloseRequested = false; });
+            }
+            return;
+        }
+        flashQuestionAdminStatus.textContent = `Залишилось ${formatCountdown(remaining)}`;
+        flashQuestionAdminStatus.className = `status-pill ${timedOut ? 'done' : 'active'}`;
+    }
+
+    async function loadAdminFlash() {
+        const res = await fetch('/api/admin/flash-question');
+        if (!res.ok) throw new Error('Не вдалося оновити Flash Question.');
+        renderAdminFlash((await res.json()).flash_question);
+    }
+
     document.getElementById('openRoulette').addEventListener('click', () => {
         rouletteModal.classList.remove('hidden');
         document.getElementById('rouletteQuestionInput').focus();
+    });
+
+    openFlashQuestionButton.addEventListener('click', () => {
+        flashQuestionModal.classList.remove('hidden');
+        document.getElementById('flashQuestionInput').focus();
+    });
+
+    document.getElementById('closeFlashQuestionModal').addEventListener('click', () => flashQuestionModal.classList.add('hidden'));
+
+    flashQuestionForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        const answers = [...flashQuestionForm.querySelectorAll('[name="answer"]')].map(input => input.value.trim());
+        const res = await fetch('/api/admin/flash-question', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                question: flashQuestionForm.elements.question.value.trim(),
+                answers,
+                correct_index: Number(flashQuestionForm.elements.correct_index.value),
+                duration_seconds: Number(flashQuestionForm.elements.duration_seconds.value),
+            })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return showToast(data.error || 'Не вдалося запустити Flash Question.', {type: 'error'});
+        flashQuestionModal.classList.add('hidden');
+        flashQuestionForm.reset();
+        renderAdminFlash(data.flash_question);
+        showToast('Flash Question запущено: квіз на паузі.', {type: 'success'});
+    });
+
+    closeFlashQuestionButton.addEventListener('click', async () => {
+        const res = await fetch('/api/admin/flash-question/close', {method: 'POST'});
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return showToast(data.error || 'Не вдалося завершити Flash Question.', {type: 'error'});
+        currentAdminFlash = null;
+        showQuizActivityStage();
+        showToast('Flash Question завершено, квіз продовжено.', {type: 'success'});
+        window.setTimeout(() => window.location.reload(), 350);
     });
 
     if (returnToLobbyButton) {
@@ -405,12 +555,15 @@
             }
             loadResults();
         },
-        presence() { loadResults(); },
+        presence() { loadResults(); loadAdminFlash().catch(() => {}); },
         results() { loadResults(); },
         duel() { loadAdminRoulette(); },
+        flash_question_updated() { loadAdminFlash(); },
     });
+    window.setInterval(updateAdminFlashTimer, 250);
     loadResults();
     loadAdminRoulette();
+    loadAdminFlash();
     </script>
 {% endif %}
 </body>

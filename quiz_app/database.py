@@ -388,10 +388,30 @@ SQLITE_ROOM_RUNTIME_SCHEMA = (
         PRIMARY KEY (round_id, voter_id)
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS flash_question_answers (
+        activity_id INTEGER NOT NULL REFERENCES activities(id),
+        participant_id INTEGER NOT NULL REFERENCES room_participants(id),
+        selected_index INTEGER NOT NULL,
+        answered_at TEXT NOT NULL,
+        PRIMARY KEY (activity_id, participant_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS room_lobby_boosts (
+        room_id INTEGER NOT NULL REFERENCES rooms(id),
+        participant_id INTEGER NOT NULL REFERENCES room_participants(id),
+        boosted_until TEXT NOT NULL,
+        cooldown_until TEXT NOT NULL,
+        PRIMARY KEY (room_id, participant_id)
+    )
+    """,
     "CREATE INDEX IF NOT EXISTS idx_room_participants_room ON room_participants(room_id, left_at)",
     "CREATE INDEX IF NOT EXISTS idx_activities_room_status ON activities(room_id, status)",
     "CREATE INDEX IF NOT EXISTS idx_quiz_attempts_activity_participant ON quiz_attempts(activity_id, participant_id)",
     "CREATE INDEX IF NOT EXISTS idx_duel_rounds_room_status ON duel_rounds(room_id, status)",
+    "CREATE INDEX IF NOT EXISTS idx_flash_question_answers_activity ON flash_question_answers(activity_id)",
+    "CREATE INDEX IF NOT EXISTS idx_room_lobby_boosts_room ON room_lobby_boosts(room_id)",
 )
 
 POSTGRES_ROOM_RUNTIME_SCHEMA = (
@@ -482,10 +502,30 @@ POSTGRES_ROOM_RUNTIME_SCHEMA = (
         PRIMARY KEY (round_id, voter_id)
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS flash_question_answers (
+        activity_id BIGINT NOT NULL REFERENCES activities(id),
+        participant_id BIGINT NOT NULL REFERENCES room_participants(id),
+        selected_index INTEGER NOT NULL,
+        answered_at TEXT NOT NULL,
+        PRIMARY KEY (activity_id, participant_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS room_lobby_boosts (
+        room_id BIGINT NOT NULL REFERENCES rooms(id),
+        participant_id BIGINT NOT NULL REFERENCES room_participants(id),
+        boosted_until TEXT NOT NULL,
+        cooldown_until TEXT NOT NULL,
+        PRIMARY KEY (room_id, participant_id)
+    )
+    """,
     "CREATE INDEX IF NOT EXISTS idx_room_participants_room ON room_participants(room_id, left_at)",
     "CREATE INDEX IF NOT EXISTS idx_activities_room_status ON activities(room_id, status)",
     "CREATE INDEX IF NOT EXISTS idx_quiz_attempts_activity_participant ON quiz_attempts(activity_id, participant_id)",
     "CREATE INDEX IF NOT EXISTS idx_duel_rounds_room_status ON duel_rounds(room_id, status)",
+    "CREATE INDEX IF NOT EXISTS idx_flash_question_answers_activity ON flash_question_answers(activity_id)",
+    "CREATE INDEX IF NOT EXISTS idx_room_lobby_boosts_room ON room_lobby_boosts(room_id)",
 )
 
 
