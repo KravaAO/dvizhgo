@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import app as server
+from quiz_app import routes as server
 
 
 class RoomFirstRuntimeTest(unittest.TestCase):

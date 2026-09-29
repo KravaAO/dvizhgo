@@ -2,9 +2,15 @@
 
 ## Поточні межі
 
-- `app.py` — HTTP-контролери та сумісний стартовий файл для локальної розробки.
+- `app.py` — 8-рядковий сумісний WSGI-вхід; він не містить маршрутів, SQL або бізнес-правил.
+- `quiz_app/bootstrap.py` — composition root: створює Flask і Socket.IO та підключає URL-контролери.
+- `quiz_app/routes.py` — перехідний HTTP-adapter для наявних URL. Нові контролери мають розміщуватися в тематичних Blueprint-модулях, а не тут.
 - `quiz_app/config.py` — конфігурація лише через змінні середовища.
 - `quiz_app/database.py` — єдиний адаптер до SQLite та PostgreSQL, ініціалізація схеми й різниця між `?` та `%s` у SQL.
+- `quiz_app/services/quiz_content.py` — завантаження, валідація та безпечне подання питань.
+- `quiz_app/services/room_runtime.py` — стан поточної activity, quiz attempts і правила відновлення квіза.
+- `quiz_app/services/participants.py` — reconnect identity, зовнішній вигляд, presence та lobby boost.
+- `quiz_app/repositories/quizzes.py` — SQL-запити до вибраного в room квіза; repository не залежить від Flask.
 - `templates/` і `static/` — лише інтерфейс; вони не містять правил збереження даних.
 
 Локальний запуск без `DATABASE_URL` використовує SQLite у WAL-режимі. Для Docker і будь-якого багатокористувацького запуску обов'язковий PostgreSQL через `DATABASE_URL`.
@@ -33,7 +39,7 @@ WebSocket вже працює через Flask-SocketIO. Браузер підк
 
 Наступні технічні кроки для подальшого масштабування:
 
-1. Винести правила квіза й ДВИЖ-ДУЕЛЮ з HTTP-контролерів у `quiz_app/services/`.
+1. Винесення правил квіза, runtime та participant lifecycle у `quiz_app/services/` — виконано; наступними переносяться правила ДВИЖ-ДУЕЛЮ та Flash Question.
 2. Додати load balancer зі sticky sessions перед кількома `web` instances.
 3. Винести Socket.IO client з CDN у versioned локальний asset під час production packaging.
 4. Додати персональні канали на кшталт `participant:{participant_id}` для приватних оновлень.
