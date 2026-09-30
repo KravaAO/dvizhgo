@@ -91,6 +91,57 @@ class RoomFirstRuntimeTest(unittest.TestCase):
         conn.close()
         self.assertEqual((resumed_quiz["type"], resumed_quiz["status"]), ("quiz", "active"))
 
+    def test_historical_analytics_counts_rooms_quizzes_and_activities(self):
+        host = server.app.test_client()
+        self.assertEqual(host.post("/rooms").status_code, 302)
+        with host.session_transaction() as host_session:
+            room_id = host_session["host_room_id"]
+
+        conn = server.get_db()
+        room_code = conn.execute("SELECT code FROM rooms WHERE id = ?", (room_id,)).fetchone()["code"]
+        conn.close()
+
+        participant = server.app.test_client()
+        self.assertEqual(participant.post("/join", data={"name": "Аналітика", "code": room_code}).status_code, 302)
+        second_participant = server.app.test_client()
+        self.assertEqual(second_participant.post("/join", data={"name": "Дані", "code": room_code}).status_code, 302)
+        self.assertEqual(host.post("/api/lobby/start", json={"mode": "self_paced"}).status_code, 200)
+        self.assertEqual(host.post("/api/admin/roulette", json={"question": "Тестова активність"}).status_code, 201)
+
+        analytics = server.build_analytics_summary()
+        self.assertEqual(analytics["totals"]["rooms_created"], 1)
+        self.assertEqual(analytics["totals"]["quizzes_started"], 1)
+        self.assertEqual(analytics["totals"]["activities_started"], 2)
+        self.assertEqual(analytics["activity_types"]["duel"], 1)
+        self.assertEqual(analytics["sessions"][0]["participants"], 2)
+        self.assertEqual(analytics["sessions"][0]["quizzes_started"], 1)
+        self.assertEqual(analytics["sessions"][0]["duels"], 1)
+
+    def test_private_analytics_requires_code_before_showing_history(self):
+        original_path = server.settings.analytics_path
+        original_code = server.settings.analytics_access_code
+        object.__setattr__(server.settings, "analytics_path", "private-analytics")
+        object.__setattr__(server.settings, "analytics_access_code", "correct-access-code")
+        try:
+            client = server.app.test_client()
+            self.assertEqual(client.get(server.ANALYTICS_ROUTE).status_code, 200)
+            self.assertIn(b"PRIVATE ANALYTICS", client.get(server.ANALYTICS_ROUTE).data)
+            self.assertIn(
+                b"\xd0\x9d\xd0\xb5\xd0\xb2\xd1\x96\xd1\x80\xd0\xbd\xd0\xb8\xd0\xb9",
+                client.post(server.ANALYTICS_ROUTE, data={"access_code": "wrong"}).data,
+            )
+            self.assertEqual(
+                client.post(server.ANALYTICS_ROUTE, data={"access_code": "correct-access-code"}).status_code,
+                302,
+            )
+            dashboard = client.get(server.ANALYTICS_ROUTE)
+            self.assertEqual(dashboard.status_code, 200)
+            self.assertIn(b"ALL SESSIONS", dashboard.data)
+            self.assertEqual(client.post(f"{server.ANALYTICS_ROUTE}/logout").status_code, 302)
+        finally:
+            object.__setattr__(server.settings, "analytics_path", original_path)
+            object.__setattr__(server.settings, "analytics_access_code", original_code)
+
     def test_presence_uses_heartbeat_and_not_just_left_at(self):
         host = server.app.test_client()
         host.post("/rooms")

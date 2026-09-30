@@ -45,8 +45,11 @@ services:
       - "127.0.0.1:5000:5000"
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-quiz}:${POSTGRES_PASSWORD:-quiz_dev_password}@dvizhgo-db:5432/${POSTGRES_DB:-quiz}
+      APP_ENV: ${APP_ENV:-development}
       SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env}
+      ANALYTICS_PATH: ${ANALYTICS_PATH:-}
+      ANALYTICS_ACCESS_CODE: ${ANALYTICS_ACCESS_CODE:-}
       SHUFFLE_ANSWERS: ${SHUFFLE_ANSWERS:-true}
       SHUFFLE_QUESTIONS: ${SHUFFLE_QUESTIONS:-false}
       SOCKETIO_MESSAGE_QUEUE: redis://dvizhgo-redis:6379/0

@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Приватна аналітика — DvizhGO</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="analytics-page">
+{% if not authenticated %}
+    <main class="analytics-login-shell">
+        <section class="analytics-login-card">
+            <p class="analytics-eyebrow">PRIVATE ANALYTICS</p>
+            <h1>Dvizh<span>GO</span><br>аналітика</h1>
+            <p>Введіть код доступу, щоб переглянути історію кімнат, тестів та активностей.</p>
+            {% if error %}<p class="analytics-error" role="alert">{{ error }}</p>{% endif %}
+            <form method="post" class="analytics-login-form" autocomplete="off">
+                <label for="access_code">Код доступу</label>
+                <input id="access_code" name="access_code" type="password" required autofocus autocomplete="one-time-code">
+                <button type="submit">Відкрити аналітику</button>
+            </form>
+        </section>
+    </main>
+{% else %}
+    <header class="analytics-header">
+        <a class="analytics-brand" href="{{ url_for('analytics_dashboard') }}">Dvizh<span>GO</span></a>
+        <div>
+            <p class="analytics-eyebrow">PRIVATE ANALYTICS</p>
+            <h1>Історія використання</h1>
+        </div>
+        <form action="{{ url_for('analytics_logout') }}" method="post">
+            <button class="analytics-logout" type="submit">Вийти</button>
+        </form>
+    </header>
+
+    <main class="analytics-shell">
+        <section class="analytics-overview" aria-label="Загальні показники">
+            <article><span>Створено кімнат</span><strong>{{ analytics.totals.rooms_created }}</strong><small>сесій за весь час</small></article>
+            <article><span>Завершено кімнат</span><strong>{{ analytics.totals.rooms_finished }}</strong><small>статус «finished»</small></article>
+            <article><span>Квізів запущено</span><strong>{{ analytics.totals.quizzes_started }}</strong><small>окремих запусків тесту</small></article>
+            <article><span>Квізів завершено</span><strong>{{ analytics.totals.quizzes_finished }}</strong><small>завершено ведучим</small></article>
+            <article><span>Спроб завершено</span><strong>{{ analytics.totals.completed_attempts }}</strong><small>учасниками</small></article>
+            <article><span>Активностей запущено</span><strong>{{ analytics.totals.activities_started }}</strong><small>{{ analytics.totals.activities_per_room }} на кімнату</small></article>
+        </section>
+
+        <section class="analytics-grid">
+            <article class="analytics-panel">
+                <div class="analytics-panel-head">
+                    <div>
+                        <p class="analytics-eyebrow">ACTIVITY MIX</p>
+                        <h2>Що запускали</h2>
+                    </div>
+                </div>
+                <dl class="analytics-mix">
+                    <div><dt>Квізи</dt><dd>{{ analytics.activity_types.quiz }}</dd></div>
+                    <div><dt>ДВИЖ-ДУЕЛІ</dt><dd>{{ analytics.activity_types.duel }}</dd></div>
+                    <div><dt>Flash Question</dt><dd>{{ analytics.activity_types.flash_question }}</dd></div>
+                </dl>
+            </article>
+
+            <article class="analytics-panel">
+                <div class="analytics-panel-head">
+                    <div>
+                        <p class="analytics-eyebrow">LAST 14 DAYS</p>
+                        <h2>Динаміка запусків</h2>
+                    </div>
+                </div>
+                <div class="analytics-daily-list">
+                    {% for day in analytics.daily %}
+                    <div>
+                        <time datetime="{{ day.date }}">{{ day.label }}</time>
+                        <span><b>{{ day.rooms }}</b> кімнат</span>
+                        <span><b>{{ day.activities }}</b> активностей</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </article>
+        </section>
+
+        <section class="analytics-panel analytics-sessions">
+            <div class="analytics-panel-head">
+                <div>
+                    <p class="analytics-eyebrow">ALL SESSIONS</p>
+                    <h2>Кімнати та активності</h2>
+                </div>
+                <span class="analytics-muted">Кімната = окрема сесія</span>
+            </div>
+            {% if analytics.sessions %}
+            <div class="analytics-table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Кімната</th>
+                            <th>Створено</th>
+                            <th>Статус</th>
+                            <th>Учасники</th>
+                            <th>Квізи</th>
+                            <th>Спроби</th>
+                            <th>Активності</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for item in analytics.sessions %}
+                        <tr>
+                            <td><strong>{{ item.title }}</strong><code>{{ item.code }}</code></td>
+                            <td>{{ item.created_at }}</td>
+                            <td><span class="analytics-status analytics-status-{{ item.status }}">{{ item.status }}</span></td>
+                            <td>{{ item.participants }}</td>
+                            <td>{{ item.quizzes_started }} / {{ item.quizzes_finished }}</td>
+                            <td>{{ item.completed_attempts }}</td>
+                            <td>{{ item.activities }} <small>Д: {{ item.duels }} · F: {{ item.flash_questions }}</small></td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+                <p class="analytics-empty">Ще немає створених кімнат. Вони з’являться тут автоматично.</p>
+            {% endif %}
+        </section>
+    </main>
+{% endif %}
+</body>
+</html>

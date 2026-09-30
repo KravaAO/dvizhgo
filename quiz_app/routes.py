@@ -1,7 +1,9 @@
 import json
 import random
 import logging
+from collections import Counter, defaultdict
 from datetime import datetime, timedelta
+from hmac import compare_digest
 
 from flask import (
     jsonify, redirect, render_template,
@@ -52,6 +54,7 @@ FLASH_QUESTION_MIN_SECONDS = 10
 FLASH_QUESTION_MAX_SECONDS = 180
 FLASH_QUESTION_INTRO_SECONDS = 2
 FLASH_QUESTION_CLOSE_DELAY_SECONDS = 5
+ANALYTICS_ROUTE = f"/{settings.analytics_path}" if settings.analytics_enabled else "/__analytics_disabled__"
 
 
 def get_db():
@@ -60,6 +63,103 @@ def get_db():
 
 def init_db():
     initialize_database(DATABASE_URL, DB_PATH)
+
+
+def build_analytics_summary():
+    """Aggregate durable room history without relying on web-analytics cookies."""
+    conn = get_db()
+    try:
+        rooms = conn.execute(
+            "SELECT id, title, code, status, created_at FROM rooms ORDER BY created_at DESC"
+        ).fetchall()
+        activities = conn.execute(
+            "SELECT room_id, type, status, started_at, finished_at FROM activities ORDER BY started_at DESC"
+        ).fetchall()
+        participant_counts = conn.execute(
+            "SELECT room_id, COUNT(*) AS count FROM room_participants GROUP BY room_id"
+        ).fetchall()
+        attempts = conn.execute(
+            """
+            SELECT a.room_id, qa.finished_at
+            FROM quiz_attempts qa
+            JOIN activities a ON a.id = qa.activity_id
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    participants_by_room = {row["room_id"]: row["count"] for row in participant_counts}
+    activities_by_room = defaultdict(list)
+    for activity in activities:
+        activities_by_room[activity["room_id"]].append(activity)
+
+    attempts_by_room = defaultdict(list)
+    for attempt in attempts:
+        attempts_by_room[attempt["room_id"]].append(attempt)
+
+    activity_types = Counter(activity["type"] for activity in activities)
+    daily_rooms = Counter(room["created_at"][:10] for room in rooms if room["created_at"])
+    daily_activities = Counter(activity["started_at"][:10] for activity in activities if activity["started_at"])
+    today = datetime.now().date()
+    daily = []
+    for offset in range(13, -1, -1):
+        day = (today - timedelta(days=offset)).isoformat()
+        daily.append(
+            {
+                "date": day,
+                "label": f"{day[8:10]}.{day[5:7]}",
+                "rooms": daily_rooms[day],
+                "activities": daily_activities[day],
+            }
+        )
+
+    sessions = []
+    for room in rooms:
+        room_activities = activities_by_room[room["id"]]
+        room_attempts = attempts_by_room[room["id"]]
+        type_counts = Counter(activity["type"] for activity in room_activities)
+        finished_quizzes = sum(
+            1 for activity in room_activities
+            if activity["type"] == "quiz" and activity["status"] == "finished"
+        )
+        sessions.append(
+            {
+                "title": room["title"],
+                "code": room["code"],
+                "status": room["status"],
+                "created_at": room["created_at"],
+                "participants": participants_by_room.get(room["id"], 0),
+                "activities": len(room_activities),
+                "quizzes_started": type_counts["quiz"],
+                "quizzes_finished": finished_quizzes,
+                "completed_attempts": sum(1 for attempt in room_attempts if attempt["finished_at"]),
+                "duels": type_counts["duel"],
+                "flash_questions": type_counts["flash_question"],
+            }
+        )
+
+    started_quizzes = activity_types["quiz"]
+    return {
+        "totals": {
+            "rooms_created": len(rooms),
+            "rooms_finished": sum(1 for room in rooms if room["status"] == "finished"),
+            "quizzes_started": started_quizzes,
+            "quizzes_finished": sum(
+                1 for activity in activities
+                if activity["type"] == "quiz" and activity["status"] == "finished"
+            ),
+            "completed_attempts": sum(1 for attempt in attempts if attempt["finished_at"]),
+            "activities_started": len(activities),
+            "activities_per_room": round(len(activities) / len(rooms), 1) if rooms else 0,
+        },
+        "activity_types": {
+            "quiz": activity_types["quiz"],
+            "duel": activity_types["duel"],
+            "flash_question": activity_types["flash_question"],
+        },
+        "daily": daily,
+        "sessions": sessions,
+    }
 
 
 def load_questions():
@@ -506,6 +606,37 @@ def index():
     if room:
         return redirect(url_for("host_lobby" if room["status"] == "lobby" else "admin"))
     return render_template("index.html")
+
+
+@app.route(ANALYTICS_ROUTE, methods=["GET", "POST"])
+def analytics_dashboard():
+    """Private, code-protected historical usage analytics."""
+    if not settings.analytics_enabled:
+        return "Not found", 404
+
+    error = None
+    if request.method == "POST":
+        access_code = request.form.get("access_code", "")
+        if compare_digest(access_code, settings.analytics_access_code):
+            session["analytics_authorized"] = True
+            return redirect(url_for("analytics_dashboard"))
+        error = "Невірний код доступу."
+
+    authenticated = bool(session.get("analytics_authorized"))
+    return render_template(
+        "analytics.html",
+        authenticated=authenticated,
+        error=error,
+        analytics=build_analytics_summary() if authenticated else None,
+    )
+
+
+@app.post(f"{ANALYTICS_ROUTE}/logout")
+def analytics_logout():
+    if not settings.analytics_enabled:
+        return "Not found", 404
+    session.pop("analytics_authorized", None)
+    return redirect(url_for("analytics_dashboard"))
 
 
 @app.get("/how-it-works")
