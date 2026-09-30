@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ mode.name }} — режим гри DvizhGO</title>
+    <meta name="description" content="{{ mode.intro }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="dv-menu dv-mode-page dv-mode-{{ mode.slug }}">
+<div class="dv-page">
+    <header class="dv-header">
+        <a class="dv-logo" href="{{ url_for('index') }}" aria-label="DvizhGO · головна"><img class="dv-brand-image" src="{{ url_for('static', filename='images/gologo.png') }}" alt="DvizhGO"></a>
+        <nav><a href="{{ url_for('index') }}">Головна</a><a href="{{ url_for('how_it_works') }}">Як це працює</a></nav>
+        <a class="dv-guide-header-cta" href="{{ url_for('index') }}">Створити кімнату →</a>
+    </header>
+
+    <main>
+        <section class="dv-mode-hero">
+            <div><p class="dv-micro">{{ mode.eyebrow }}</p><h1>{{ mode.headline|safe }}</h1></div>
+            <div class="dv-mode-hero-copy"><p>{{ mode.intro }}</p><span>{{ mode.name }} · LIVE MODE</span></div>
+        </section>
+
+        <section class="dv-mode-when"><p class="dv-micro">КОЛИ ЗАПУСКАТИ</p><h2>Додайте гру,<br>коли це потрібно групі.</h2><p>{{ mode.when }}</p></section>
+
+        <section class="dv-mode-flow" aria-labelledby="mode-flow-title">
+            <div class="dv-mode-flow-heading"><p class="dv-micro">ЯК ЦЕ ПРАЦЮЄ</p><h2 id="mode-flow-title">Чотири<br>простих кроки.</h2></div>
+            <ol>
+                {% for number, title, copy in mode.steps %}
+                <li><span>{{ number }}</span><div><strong>{{ title }}</strong><p>{{ copy }}</p></div></li>
+                {% endfor %}
+            </ol>
+        </section>
+
+        <section class="dv-mode-notice"><p class="dv-micro">ВАЖЛИВО</p><p>{{ mode.notice }}</p><a href="{{ url_for('how_it_works') }}">← Повернутися до гайду room host</a></section>
+    </main>
+    <footer class="dv-footer">DvizhGO · live rooms <a href="{{ url_for('index') }}">Створити кімнату →</a></footer>
+</div>
+</body>
+</html>

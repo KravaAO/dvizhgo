@@ -36,7 +36,9 @@
             {% endif %}
             <a class="dv-host-button dv-host-button-light" href="{{ url_for('quizzes') }}">Квізи</a>
             <button id="openRoulette" class="dv-host-button dv-host-button-signal" type="button" {% if not current_activity or current_activity.type != 'quiz' %}disabled title="ДВИЖ-ДУЕЛЬ доступний під час активного квізу"{% endif %}>ДВИЖ-ДУЕЛЬ × 2</button>
+            <button id="openDuelHelp" class="dv-mode-help-button" type="button" aria-label="Що таке ДВИЖ-ДУЕЛЬ?" title="Що це за режим?">?</button>
             <button id="openFlashQuestion" class="dv-host-button dv-host-button-signal" type="button" {% if not current_activity or current_activity.type != 'quiz' %}disabled title="Flash Question доступне під час активного квізу"{% endif %}>FLASH QUESTION</button>
+            <button id="openFlashHelp" class="dv-mode-help-button" type="button" aria-label="Що таке Flash Question?" title="Що це за режим?">?</button>
             {% if current_activity and current_activity.type == 'quiz' %}
                 <button id="returnToLobby" class="dv-host-button dv-host-button-light" type="button" disabled title="Стає доступною, коли всі завершили квіз">До лобі</button>
             {% endif %}
@@ -86,7 +88,7 @@
             <div class="stat-card"><span>У процесі</span><strong id="statActive">0</strong></div>
         </section>
 
-        <section class="admin-panel">
+        <section id="duelAdminPanel" class="admin-panel {% if not current_activity or current_activity.type != 'duel' %}hidden{% endif %}">
             <div class="roulette-admin-head">
                 <h2>ДВИЖ-ДУЕЛЬ</h2>
                 <div class="admin-actions">
@@ -97,7 +99,7 @@
             <div id="rouletteAdminBody" class="roulette-summary">Творець кімнати задає виклик, а режим обирає двох активних учасників.</div>
         </section>
 
-        <section class="admin-panel">
+        <section id="flashAdminPanel" class="admin-panel {% if not current_activity or current_activity.type != 'flash_question' %}hidden{% endif %}">
             <div class="roulette-admin-head">
                 <h2>FLASH QUESTION</h2>
                 <div class="admin-actions"><span id="flashQuestionAdminStatus" class="status-pill active">{% if current_activity and current_activity.type == 'flash_question' %}Учасники відповідають{% else %}Режим не активний{% endif %}</span><button id="closeFlashQuestion" class="dv-host-button dv-host-button-danger {% if not current_activity or current_activity.type != 'flash_question' %}hidden{% endif %}" type="button">Завершити Flash Question</button></div>
@@ -163,6 +165,28 @@
                 <p class="muted">Від 10 секунд до 3 хвилин. Таймер почнеться після вступної анімації.</p>
                 <div class="modal-actions"><button id="closeFlashQuestionModal" class="secondary-btn" type="button">Скасувати</button><button class="primary-btn" type="submit">Запустити Flash</button></div>
             </form>
+        </section>
+    </div>
+
+    <div id="duelHelpModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="duelHelpModalTitle">
+        <section class="modal-card dv-mode-help-modal">
+            <button class="dv-mode-help-close" type="button" data-close-mode-help aria-label="Закрити">×</button>
+            <p class="dv-host-micro">EXTRA ACTIVITY / × 2</p>
+            <h2 id="duelHelpModalTitle">Що таке<br>ДВИЖ-ДУЕЛЬ?</h2>
+            <p>Короткий виклик для двох випадково обраних активних учасників. Він додає енергії, коли хочете змінити темп квіза.</p>
+            <ol><li>Ви пишете одне відкрите завдання.</li><li>Квіз призупиняється, а DvizhGO обирає двох учасників.</li><li>Вони відповідають, після чого решта групи голосує за відповідь.</li><li>Натисніть «Зупинити ДВИЖ-ДУЕЛЬ», щоб повернути всіх до квіза.</li></ol>
+            <button class="dv-host-button dv-host-button-signal" type="button" data-close-mode-help>Зрозуміло</button>
+        </section>
+    </div>
+
+    <div id="flashHelpModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="flashHelpModalTitle">
+        <section class="modal-card dv-mode-help-modal">
+            <button class="dv-mode-help-close" type="button" data-close-mode-help aria-label="Закрити">×</button>
+            <p class="dv-host-micro">EXTRA ACTIVITY / ALL PLAY</p>
+            <h2 id="flashHelpModalTitle">Що таке<br>FLASH QUESTION?</h2>
+            <p>Швидке питання з варіантами відповіді для всієї кімнати. Воно добре працює як коротка перевірка уваги або зміна ритму.</p>
+            <ol><li>Ви додаєте питання, три варіанти і правильну відповідь.</li><li>Вказуєте час від 10 секунд до 3 хвилин.</li><li>Квіз призупиняється, а всі учасники відповідають одночасно.</li><li>Після завершення Flash Question квіз продовжується.</li></ol>
+            <button class="dv-host-button dv-host-button-signal" type="button" data-close-mode-help>Зрозуміло</button>
         </section>
     </div>
 
@@ -270,6 +294,8 @@
     const rouletteForm = document.getElementById('rouletteForm');
     const rouletteAdminBody = document.getElementById('rouletteAdminBody');
     const rouletteAdminStatus = document.getElementById('rouletteAdminStatus');
+    const duelAdminPanel = document.getElementById('duelAdminPanel');
+    const flashAdminPanel = document.getElementById('flashAdminPanel');
     const closeRouletteButton = document.getElementById('closeRoulette');
     const stopDuelModal = document.getElementById('stopDuelModal');
     const cancelStopDuelButton = document.getElementById('cancelStopDuel');
@@ -277,6 +303,8 @@
     const openRouletteButton = document.getElementById('openRoulette');
     const openFlashQuestionButton = document.getElementById('openFlashQuestion');
     const flashQuestionModal = document.getElementById('flashQuestionModal');
+    const duelHelpModal = document.getElementById('duelHelpModal');
+    const flashHelpModal = document.getElementById('flashHelpModal');
     const flashQuestionForm = document.getElementById('flashQuestionForm');
     const closeFlashQuestionButton = document.getElementById('closeFlashQuestion');
     const flashQuestionAdminStatus = document.getElementById('flashQuestionAdminStatus');
@@ -337,6 +365,7 @@
 
     function renderAdminRoulette(round) {
         if (!round) {
+            duelAdminPanel.classList.add('hidden');
             if (roomActivityStage && roomActivityStage.dataset.activityType === 'duel') {
                 window.location.reload();
                 return;
@@ -349,6 +378,7 @@
         }
 
         showDuelActivityStage(round);
+        duelAdminPanel.classList.remove('hidden');
         const isVoting = round.status === 'voting';
         closeRouletteButton.classList.remove('hidden');
         rouletteAdminStatus.textContent = isVoting ? 'Голосування' : 'Учасники відповідають';
@@ -376,6 +406,7 @@
     function renderAdminFlash(flash) {
         currentAdminFlash = flash;
         if (!flash) {
+            flashAdminPanel.classList.add('hidden');
             if (roomActivityStage && roomActivityStage.dataset.activityType === 'flash_question') {
                 window.location.reload();
                 return;
@@ -390,6 +421,7 @@
         const parsedServerTime = Date.parse(flash.server_time);
         if (Number.isFinite(parsedServerTime)) adminFlashClockOffset = parsedServerTime - Date.now();
         showFlashActivityStage(flash);
+        flashAdminPanel.classList.remove('hidden');
         closeFlashQuestionButton.classList.remove('hidden');
         flashQuestionAdminStatus.className = `status-pill ${flash.deadline_reached ? 'done' : 'active'}`;
         flashQuestionAdminBody.innerHTML = `
@@ -429,6 +461,19 @@
     document.getElementById('openRoulette').addEventListener('click', () => {
         rouletteModal.classList.remove('hidden');
         document.getElementById('rouletteQuestionInput').focus();
+    });
+
+    function closeModeHelp(modal) { modal.classList.add('hidden'); }
+    function openModeHelp(modal) { modal.classList.remove('hidden'); modal.querySelector('[data-close-mode-help]').focus(); }
+    document.getElementById('openDuelHelp').addEventListener('click', () => openModeHelp(duelHelpModal));
+    document.getElementById('openFlashHelp').addEventListener('click', () => openModeHelp(flashHelpModal));
+    [duelHelpModal, flashHelpModal].forEach(modal => {
+        modal.querySelectorAll('[data-close-mode-help]').forEach(button => button.addEventListener('click', () => closeModeHelp(modal)));
+        modal.addEventListener('click', event => { if (event.target === modal) closeModeHelp(modal); });
+    });
+    document.addEventListener('keydown', event => {
+        if (event.key !== 'Escape') return;
+        [duelHelpModal, flashHelpModal].filter(modal => !modal.classList.contains('hidden')).forEach(closeModeHelp);
     });
 
     openFlashQuestionButton.addEventListener('click', () => {

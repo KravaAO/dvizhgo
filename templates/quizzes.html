@@ -7,17 +7,15 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <script src="{{ url_for('static', filename='js/toast.js') }}"></script>
 </head>
-<body class="admin-page">
-    <header class="admin-header">
-        <div>
-            <div class="eyebrow">QUIZ LIBRARY · {{ room.code }}</div>
-            <h1>Квізи кімнати</h1>
-        </div>
-        <div class="admin-actions"><a class="secondary-btn" href="{{ url_for('host_lobby') }}">← До лобі</a><button id="startFromQuizzes" class="primary-btn" type="button">Почати квіз</button></div>
+<body class="dv-quiz-builder-page">
+    <header class="dv-quiz-builder-header">
+        <a class="dv-host-brand" href="{{ url_for('admin') }}" aria-label="DvizhGO · адмінка">Dvizh<span>GO</span></a>
+        <div class="dv-quiz-builder-room"><span>КІМНАТА / {{ room.code }}</span><strong>{{ room.title }}</strong></div>
+        <div class="dv-quiz-builder-actions"><a href="{{ url_for('host_lobby') }}">← Назад у лобі</a><button id="startFromQuizzes" type="button">Почати квіз</button></div>
     </header>
 
-    <main class="admin-shell quiz-builder-shell">
-        <section class="admin-panel">
+    <main class="dv-quiz-builder-shell">
+        <section class="dv-builder-panel dv-builder-library">
             <div class="roulette-admin-head">
                 <div>
                     <h2>Готовий квіз і збережені</h2>
@@ -27,13 +25,21 @@
             <div id="quizLibrary" class="quiz-library"></div>
         </section>
 
-        <section class="admin-panel">
+        <section class="dv-builder-panel dv-builder-ai">
             <div class="roulette-admin-head">
                 <div>
                     <h2>Створити з тексту ШІ</h2>
                     <p class="microcopy">Скопіюйте інструкцію в чат, вставте отриманий JSON сюди та натисніть «Рендер».</p>
                 </div>
-                <button id="copyAiPrompt" class="secondary-btn" type="button">Копіювати інструкцію для ШІ</button>
+                <button id="copyAiPrompt" class="secondary-btn" type="button">Скопіювати prompt</button>
+            </div>
+            <div class="dv-builder-prompt-settings">
+                <p class="dv-host-micro">НАЛАШТУВАННЯ PROMPT</p>
+                <div class="dv-builder-brief-fields">
+                    <label for="quizTopic">Про що квіз?<input id="quizTopic" name="topic" type="text" maxlength="120" placeholder="Наприклад: основи Git" required></label>
+                    <label for="quizQuestionCount">Кількість питань<input id="quizQuestionCount" name="question_count" type="number" min="1" max="67" value="10" required inputmode="numeric"></label>
+                </div>
+                <p class="dv-builder-brief-note">Поля підставляються у prompt. Якщо даних бракує, ШІ має спершу поставити уточнювальні питання.</p>
             </div>
             <textarea id="quizJson" class="quiz-json-input" spellcheck="false" placeholder='{"title":"Git basics","questions":[...]}'></textarea>
             <div class="modal-actions">
@@ -42,19 +48,70 @@
             </div>
         </section>
 
-        <section id="quizPreviewPanel" class="admin-panel hidden">
+        <section id="quizPreviewPanel" class="dv-builder-panel dv-builder-preview hidden">
             <div class="roulette-admin-head">
                 <div>
                     <h2 id="previewTitle">Попередній перегляд</h2>
                     <p id="previewMeta" class="microcopy"></p>
+                </div>
+                <div class="dv-preview-actions">
+                    <button id="listPreview" class="secondary-btn is-selected" type="button">Список</button>
+                    <button id="carouselPreview" class="secondary-btn" type="button">Карусель</button>
+                    <button id="addQuestion" class="primary-btn" type="button">+ Додати питання</button>
                 </div>
             </div>
             <div id="quizPreview" class="quiz-preview"></div>
         </section>
     </main>
 
+    <div id="questionEditorModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="questionEditorTitle">
+        <section class="modal-card dv-question-editor">
+            <div class="details-head"><div><p class="dv-host-micro">QUIZ QUESTION</p><h2 id="questionEditorTitle">Нове питання</h2></div><button id="closeQuestionEditor" class="secondary-btn" type="button">Закрити ×</button></div>
+            <form id="questionEditorForm" class="dv-question-form">
+                <label>Питання<textarea id="editorQuestion" required maxlength="1800" placeholder="Сформулюйте завдання"></textarea></label>
+                <label>Тип<select id="editorType"><option value="single">Одна правильна відповідь</option><option value="multiple">Кілька правильних відповідей</option><option value="true_false">Так / ні</option></select></label>
+                <label>Додатковий контекст <textarea id="editorText" maxlength="1800" placeholder="Необов'язково"></textarea></label>
+                <label>Код <textarea id="editorCode" maxlength="4000" placeholder="Необов'язково"></textarea></label>
+                <fieldset><legend>Варіанти та правильні відповіді</legend><div id="editorAnswers" class="dv-editor-answers"></div><button id="addAnswer" class="secondary-btn" type="button">+ Варіант</button></fieldset>
+                <label>Пояснення <textarea id="editorExplanation" maxlength="500" placeholder="Необов'язково"></textarea></label>
+                <label>Складність<select id="editorDifficulty"><option value="">Не вказувати</option><option value="easy">Легко</option><option value="medium">Середньо</option><option value="hard">Складно</option></select></label>
+                <div class="modal-actions"><button id="cancelQuestionEditor" class="secondary-btn" type="button">Вийти без змін</button><button class="primary-btn" type="submit">Зберегти питання</button></div>
+            </form>
+        </section>
+    </div>
+
+    <div id="deleteQuestionModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="deleteQuestionTitle">
+        <section class="modal-card dv-delete-question-modal">
+            <p class="dv-host-micro">ПІДТВЕРДЖЕННЯ</p>
+            <h2 id="deleteQuestionTitle">Видалити<br>завдання?</h2>
+            <p id="deleteQuestionDescription">Питання та його варіанти відповідей буде прибрано з цього квіза.</p>
+            <div class="modal-actions"><button id="cancelDeleteQuestion" class="secondary-btn" type="button">Залишити</button><button id="confirmDeleteQuestion" class="primary-btn" type="button">Так, видалити</button></div>
+        </section>
+    </div>
+
     <script>
-    const aiPrompt = `Створи квіз у чистому JSON без Markdown і без пояснень поза JSON. Формат:
+    function buildAiPrompt() {
+        const topic = document.getElementById('quizTopic').value.trim();
+        const count = Number(document.getElementById('quizQuestionCount').value);
+        if (!topic) {
+            showToast('Спочатку вкажіть, про що квіз.', {type: 'error'});
+            document.getElementById('quizTopic').focus();
+            return null;
+        }
+        if (!Number.isInteger(count) || count < 1 || count > 67) {
+            showToast('Вкажіть кількість питань від 1 до 67.', {type: 'error'});
+            document.getElementById('quizQuestionCount').focus();
+            return null;
+        }
+        return `Ти — методист і автор квізів українською мовою.
+
+Бриф квіза:
+- Тема: "${topic}"
+- Кількість питань: ${count}
+
+Спершу перевір бриф. Якщо для якісного квіза бракує цільової аудиторії, рівня складності, навчальної мети або важливого контексту, НЕ створюй JSON. Постав до 3 коротких уточнювальних питань українською у нумерованому списку. Після моїх відповідей продовжуй.
+
+Коли даних достатньо, створи рівно ${count} питань на тему "${topic}" і поверни квіз у чистому JSON без Markdown і без пояснень поза JSON. Формат:
 {
   "title": "Назва квіза",
   "questions": [
@@ -79,9 +136,49 @@
 - explanation і difficulty необов'язкові. Для difficulty використовуй easy, medium або hard.
 - text і code необов'язкові: text виводиться як додатковий контекст між питанням та кодом. Код додавай лише коли він потрібен для завдання.
 - Усі питання, відповіді та пояснення — українською мовою.`;
+    }
     let previewQuiz = null;
+    let previewView = localStorage.getItem('dvQuizPreviewView') === 'carousel' ? 'carousel' : 'list';
+    let carouselIndex = 0;
+    let editingIndex = null;
+    let deletingIndex = null;
 
     const escapeHtml = value => String(value).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'})[ch]);
+
+    const previewQuestions = () => Array.isArray(previewQuiz) ? previewQuiz : previewQuiz.questions;
+    const previewTitle = () => Array.isArray(previewQuiz) ? 'Новий квіз' : previewQuiz.title || 'Новий квіз';
+    const questionTypeLabel = type => ({single: 'одна відповідь', multiple: 'кілька відповідей', true_false: 'так / ні'}[type] || 'одна відповідь');
+
+    function questionCard(question, index) {
+        return `<article class="quiz-preview-item">
+            <div class="dv-question-card-head"><strong>${index + 1}. ${escapeHtml(question.question || '')}</strong><div class="dv-question-card-actions"><button class="secondary-btn" type="button" data-edit-question="${index}">Редагувати</button><button class="dv-delete-question" type="button" data-delete-question="${index}">Видалити</button></div></div>
+            ${question.text ? `<p>${escapeHtml(question.text)}</p>` : ''}
+            ${question.code ? `<pre>${escapeHtml(question.code)}</pre>` : ''}
+            <span class="dv-question-type dv-question-type-${escapeHtml(question.type || 'single')}">${questionTypeLabel(question.type)}</span>
+            <ol>${(question.answers || []).map((answer, answerIndex) => `<li class="${(question.correct || []).includes(answerIndex) ? 'correct-preview' : ''}">${escapeHtml(answer)}</li>`).join('')}</ol>
+        </article>`;
+    }
+
+    function renderPreview() {
+        const questions = previewQuestions();
+        if (!questions?.length) return;
+        document.getElementById('listPreview').classList.toggle('is-selected', previewView === 'list');
+        document.getElementById('carouselPreview').classList.toggle('is-selected', previewView === 'carousel');
+        document.getElementById('previewTitle').textContent = previewTitle();
+        document.getElementById('previewMeta').textContent = `${questions.length} питань · ${previewView === 'list' ? 'список для швидкої перевірки' : `картка ${carouselIndex + 1} з ${questions.length}`}`;
+        const preview = document.getElementById('quizPreview');
+        if (previewView === 'carousel') {
+            carouselIndex = Math.max(0, Math.min(carouselIndex, questions.length - 1));
+            preview.className = 'quiz-preview dv-quiz-carousel';
+            preview.innerHTML = `<button class="dv-carousel-arrow" type="button" data-carousel-step="-1" ${carouselIndex === 0 ? 'disabled' : ''} aria-label="Попереднє питання">←</button><div class="dv-carousel-card">${questionCard(questions[carouselIndex], carouselIndex)}</div><button class="dv-carousel-arrow" type="button" data-carousel-step="1" ${carouselIndex === questions.length - 1 ? 'disabled' : ''} aria-label="Наступне питання">→</button>`;
+        } else {
+            preview.className = 'quiz-preview';
+            preview.innerHTML = questions.map(questionCard).join('');
+        }
+        preview.querySelectorAll('[data-edit-question]').forEach(button => button.addEventListener('click', () => openQuestionEditor(Number(button.dataset.editQuestion))));
+        preview.querySelectorAll('[data-delete-question]').forEach(button => button.addEventListener('click', () => openDeleteQuestion(Number(button.dataset.deleteQuestion))));
+        preview.querySelectorAll('[data-carousel-step]').forEach(button => button.addEventListener('click', () => { carouselIndex += Number(button.dataset.carouselStep); renderPreview(); }));
+    }
 
     async function loadLibrary() {
         const res = await fetch('/api/admin/quizzes');
@@ -107,9 +204,11 @@
     }
 
     document.getElementById('copyAiPrompt').addEventListener('click', async () => {
+        const aiPrompt = buildAiPrompt();
+        if (!aiPrompt) return;
         try {
             await navigator.clipboard.writeText(aiPrompt);
-            showToast('Інструкцію скопійовано.', {type: 'success'});
+            showToast('Prompt із темою та кількістю питань скопійовано.', {type: 'success'});
         } catch {
             showToast('Не вдалося скопіювати. Спробуйте через HTTPS або localhost.', {type: 'error'});
         }
@@ -119,17 +218,10 @@
         try {
             const raw = document.getElementById('quizJson').value.trim();
             previewQuiz = JSON.parse(raw);
-            const questions = Array.isArray(previewQuiz) ? previewQuiz : previewQuiz.questions;
+            const questions = previewQuestions();
             if (!Array.isArray(questions) || !questions.length) throw new Error('Потрібен масив questions.');
-            const title = Array.isArray(previewQuiz) ? 'Новий квіз' : previewQuiz.title || 'Новий квіз';
-            document.getElementById('previewTitle').textContent = title;
-            document.getElementById('previewMeta').textContent = `${questions.length} питань · перевірте зміст перед збереженням`;
-            document.getElementById('quizPreview').innerHTML = questions.map((question, index) => `
-                <article class="quiz-preview-item"><strong>${index + 1}. ${escapeHtml(question.question || '')}</strong>
-                ${question.text ? `<p>${escapeHtml(question.text)}</p>` : ''}
-                ${question.code ? `<pre>${escapeHtml(question.code)}</pre>` : ''}
-                <span class="question-chip">${escapeHtml(question.type || 'single')}</span>
-                <ol>${(question.answers || []).map((answer, answerIndex) => `<li class="${(question.correct || []).includes(answerIndex) ? 'correct-preview' : ''}">${escapeHtml(answer)}</li>`).join('')}</ol></article>`).join('');
+            carouselIndex = 0;
+            renderPreview();
             document.getElementById('quizPreviewPanel').classList.remove('hidden');
             document.getElementById('saveQuiz').disabled = false;
             showToast('Квіз відрендерено. Тепер його можна зберегти.', {type: 'success'});
@@ -139,6 +231,107 @@
             showToast(`Не вдалося прочитати JSON: ${error.message}`, {type: 'error'});
         }
     });
+
+    function editorAnswerState() {
+        return [...document.querySelectorAll('#editorAnswers input[type="text"]')].map((input, index) => ({
+            value: input.value,
+            correct: document.querySelector(`#editorAnswers input[data-correct-index="${index}"]`)?.checked,
+        }));
+    }
+
+    function renderEditorAnswers(answers, correct = []) {
+        const type = document.getElementById('editorType').value;
+        const inputType = type === 'multiple' ? 'checkbox' : 'radio';
+        const normalized = answers.length ? answers : ['', ''];
+        document.getElementById('editorAnswers').innerHTML = normalized.map((answer, index) => `
+            <div class="dv-editor-answer"><input type="${inputType}" name="correctAnswer" data-correct-index="${index}" ${correct.includes(index) ? 'checked' : ''} aria-label="Правильна відповідь ${index + 1}"><input type="text" value="${escapeHtml(answer)}" maxlength="300" required placeholder="Варіант ${index + 1}"><button type="button" data-remove-answer="${index}" aria-label="Видалити варіант ${index + 1}">×</button></div>`).join('');
+        document.querySelectorAll('[data-remove-answer]').forEach(button => button.addEventListener('click', () => {
+            const current = editorAnswerState();
+            if (current.length <= 2) return showToast('Потрібно щонайменше два варіанти.', {type: 'error'});
+            current.splice(Number(button.dataset.removeAnswer), 1);
+            renderEditorAnswers(current.map(item => item.value), current.flatMap((item, index) => item.correct ? [index] : []));
+        }));
+    }
+
+    function openQuestionEditor(index = null) {
+        editingIndex = index;
+        const current = index === null ? null : previewQuestions()[index];
+        document.getElementById('questionEditorTitle').textContent = current ? `Питання ${index + 1}` : 'Нове питання';
+        document.getElementById('editorQuestion').value = current?.question || '';
+        document.getElementById('editorType').value = current?.type || 'single';
+        document.getElementById('editorText').value = current?.text || '';
+        document.getElementById('editorCode').value = current?.code || '';
+        document.getElementById('editorExplanation').value = current?.explanation || '';
+        document.getElementById('editorDifficulty').value = current?.difficulty || '';
+        renderEditorAnswers(current?.answers || ['', ''], current?.correct || []);
+        document.getElementById('questionEditorModal').classList.remove('hidden');
+        document.getElementById('editorQuestion').focus();
+    }
+
+    function closeQuestionEditor() { document.getElementById('questionEditorModal').classList.add('hidden'); editingIndex = null; }
+
+    function openDeleteQuestion(index) {
+        const questions = previewQuestions();
+        if (questions.length <= 1) return showToast('У квізі має залишитися щонайменше одне завдання.', {type: 'error'});
+        deletingIndex = index;
+        document.getElementById('deleteQuestionDescription').textContent = `Завдання ${index + 1} «${questions[index].question || 'без назви'}» буде прибрано з цього квіза.`;
+        document.getElementById('deleteQuestionModal').classList.remove('hidden');
+        document.getElementById('confirmDeleteQuestion').focus();
+    }
+
+    function closeDeleteQuestion() { document.getElementById('deleteQuestionModal').classList.add('hidden'); deletingIndex = null; }
+
+    document.getElementById('editorType').addEventListener('change', () => {
+        const current = editorAnswerState();
+        renderEditorAnswers(current.map(item => item.value), current.flatMap((item, index) => item.correct ? [index] : []));
+    });
+    document.getElementById('addAnswer').addEventListener('click', () => {
+        const current = editorAnswerState();
+        if (current.length >= 8) return showToast('У питанні може бути максимум 8 варіантів.', {type: 'error'});
+        current.push({value: '', correct: false});
+        renderEditorAnswers(current.map(item => item.value), current.flatMap((item, index) => item.correct ? [index] : []));
+    });
+    document.getElementById('closeQuestionEditor').addEventListener('click', closeQuestionEditor);
+    document.getElementById('cancelQuestionEditor').addEventListener('click', closeQuestionEditor);
+    document.getElementById('questionEditorModal').addEventListener('click', event => { if (event.target.id === 'questionEditorModal') closeQuestionEditor(); });
+    document.addEventListener('keydown', event => { if (event.key === 'Escape' && !document.getElementById('questionEditorModal').classList.contains('hidden')) closeQuestionEditor(); });
+    document.getElementById('deleteQuestionModal').addEventListener('click', event => { if (event.target.id === 'deleteQuestionModal') closeDeleteQuestion(); });
+    document.addEventListener('keydown', event => { if (event.key === 'Escape' && !document.getElementById('deleteQuestionModal').classList.contains('hidden')) closeDeleteQuestion(); });
+    document.getElementById('cancelDeleteQuestion').addEventListener('click', closeDeleteQuestion);
+    document.getElementById('confirmDeleteQuestion').addEventListener('click', () => {
+        if (deletingIndex === null) return;
+        const questions = previewQuestions();
+        questions.splice(deletingIndex, 1);
+        carouselIndex = Math.min(carouselIndex, questions.length - 1);
+        closeDeleteQuestion();
+        renderPreview();
+        showToast('Завдання видалено. Збережіть квіз, коли завершите.', {type: 'success'});
+    });
+    document.getElementById('questionEditorForm').addEventListener('submit', event => {
+        event.preventDefault();
+        const type = document.getElementById('editorType').value;
+        const answers = editorAnswerState();
+        const values = answers.map(item => item.value.trim());
+        let correct = answers.flatMap((item, index) => item.correct ? [index] : []);
+        if (values.some(value => !value) || values.length < 2) return showToast('Заповніть щонайменше два варіанти.', {type: 'error'});
+        if (type === 'true_false' && values.length !== 2) return showToast('Так / ні має рівно два варіанти.', {type: 'error'});
+        if (type !== 'multiple') correct = correct.slice(0, 1);
+        if (!correct.length) return showToast('Позначте правильну відповідь.', {type: 'error'});
+        const question = {
+            type, question: document.getElementById('editorQuestion').value.trim(), text: document.getElementById('editorText').value.trim(),
+            code: document.getElementById('editorCode').value.trim(), answers: values, correct,
+            explanation: document.getElementById('editorExplanation').value.trim(), difficulty: document.getElementById('editorDifficulty').value,
+        };
+        const questions = previewQuestions();
+        if (editingIndex === null) questions.push(question); else questions[editingIndex] = {...questions[editingIndex], ...question};
+        carouselIndex = editingIndex === null ? questions.length - 1 : editingIndex;
+        closeQuestionEditor();
+        renderPreview();
+        showToast('Питання оновлено. Збережіть квіз, коли завершите.', {type: 'success'});
+    });
+    document.getElementById('listPreview').addEventListener('click', () => { previewView = 'list'; localStorage.setItem('dvQuizPreviewView', previewView); renderPreview(); });
+    document.getElementById('carouselPreview').addEventListener('click', () => { previewView = 'carousel'; localStorage.setItem('dvQuizPreviewView', previewView); renderPreview(); });
+    document.getElementById('addQuestion').addEventListener('click', () => openQuestionEditor());
 
     document.getElementById('saveQuiz').addEventListener('click', async () => {
         if (!previewQuiz) return;

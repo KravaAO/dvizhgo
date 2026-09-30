@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Як користуватися DvizhGO — покроковий гайд</title>
+    <meta name="description" content="Покроковий гайд: створіть кімнату DvizhGO, підготуйте квіз, запросіть групу та перегляньте результати.">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="dv-menu dv-guide-page">
+<div class="dv-page">
+    <header class="dv-header">
+        <a class="dv-logo" href="{{ url_for('index') }}" aria-label="DvizhGO · головна"><img class="dv-brand-image" src="{{ url_for('static', filename='images/gologo.png') }}" alt="DvizhGO"></a>
+        <nav><a href="{{ url_for('index') }}">Головна</a><a href="{{ url_for('how_it_works') }}" aria-current="page">Як це працює</a></nav>
+        <a class="dv-guide-header-cta" href="{{ url_for('index') }}">Створити кімнату →</a>
+    </header>
+
+    <main>
+        <section class="dv-guide-hero" aria-labelledby="guide-title">
+            <p class="dv-micro">ROOM HOST GUIDE / 07 STEPS</p>
+            <h1 id="guide-title">Проведіть<br>квіз <span>наживо.</span></h1>
+            <p>Від створення кімнати до результатів групи. Пройдіть кроки один за одним — кожен займає кілька хвилин.</p>
+        </section>
+
+        <ol class="dv-guide-steps">
+            <li class="dv-guide-step"><article><p class="dv-guide-number">01 / START</p><h2>Створіть кімнату</h2><p>На головній натисніть «Створити кімнату». Ви стаєте room host, а система відкриває особисте лобі з кодом доступу.</p></article></li>
+            <li class="dv-guide-step"><article><p class="dv-guide-number">02 / LOBBY</p><h2>Скопіюйте код</h2><p>Надішліть код групі. Учасники введуть його разом зі своїм ім’ям і з’являться у лобі, коли приєднаються.</p></article></li>
+            <li class="dv-guide-step"><article><p class="dv-guide-number">03 / QUIZ</p><h2>Підготуйте квіз</h2><p>У «Квізах» оберіть готовий набір або створіть свій через ШІ: вкажіть тему й кількість питань, вставте JSON, перевірте та збережіть.</p></article></li>
+            <li class="dv-guide-step"><article><p class="dv-guide-number">04 / JOIN</p><h2>Зберіть групу</h2><p>Переконайтеся, що всі учасники приєдналися. У лобі вони можуть налаштувати свого персонажа та чекають вашого старту.</p></article></li>
+            <li class="dv-guide-step"><article><p class="dv-guide-number">05 / LIVE</p><h2>Запустіть квіз</h2><p>Поверніться до бібліотеки, виберіть активний квіз і натисніть «Почати квіз». Завдання відкриються всім учасникам одночасно.</p></article></li>
+            <li class="dv-guide-step"><article><p class="dv-guide-number">06 / ENERGY</p><h2>Керуйте динамікою</h2><p>Під час квіза за потреби запускайте <a class="dv-guide-inline-link" href="{{ url_for('dvizh_duel_info') }}">ДВИЖ-ДУЕЛЬ →</a> для двох випадкових учасників або <a class="dv-guide-inline-link" href="{{ url_for('flash_question_info') }}">Flash Question →</a> для всієї групи. Після режиму квіз продовжується.</p></article></li>
+            <li class="dv-guide-step"><article><p class="dv-guide-number">07 / RESULTS</p><h2>Перегляньте результат</h2><p>В адмінці видно прогрес, правильні відповіді й деталі кожного учасника. Після завершення всіх спроб поверніть кімнату до лобі.</p></article></li>
+        </ol>
+
+        <section class="dv-guide-phases" aria-labelledby="guide-phases-title">
+            <div class="dv-guide-phases-heading"><p class="dv-micro">HOST FLOW / BEFORE YOU START</p><h2 id="guide-phases-title">Уся сесія<br>у чотири етапи.</h2><p>Це маршрут room host: він допомагає не загубитися між створенням кімнати, запуском і результатами.</p></div>
+            <ol>
+                <li><span>01</span><div><strong>Кімната й група</strong><p>Створіть кімнату, надішліть код та дочекайтеся учасників у лобі.</p></div><em>LOBBY</em></li>
+                <li><span>02</span><div><strong>Квіз і завдання</strong><p>Відкрийте «Квізи»: оберіть готовий набір або створіть свій, перевірте питання й збережіть.</p></div><em>PREPARE</em></li>
+                <li><span>03</span><div><strong>Живий запуск</strong><p>Запустіть активний квіз, спостерігайте за прогресом в адмінці та за потреби додавайте ДВИЖ-ДУЕЛЬ або Flash Question.</p></div><em>LIVE</em></li>
+                <li><span>04</span><div><strong>Фініш і результати</strong><p>Коли всі завершили, перегляньте відповіді та поверніть кімнату в лобі для наступної активності.</p></div><em>RESULTS</em></li>
+            </ol>
+        </section>
+
+        <section class="dv-guide-video dv-guide-video-only" aria-label="Повний відеогайд DvizhGO">
+            <div class="dv-guide-video-player"><video controls preload="metadata" playsinline aria-label="Повний відеогайд DvizhGO"><source src="{{ url_for('static', filename='video/dvizhgo-guide.mp4') }}" type="video/mp4">Ваш браузер не підтримує відтворення відео.</video><div class="dv-guide-video-empty"><span>DVIZHGO / VIDEO GUIDE</span><strong>Завантажуємо<br>відеогайд</strong></div></div>
+        </section>
+
+        <section class="dv-guide-finish"><p class="dv-micro">READY / YOUR TURN</p><h2>Готові почати?</h2><a href="{{ url_for('index') }}">Створити кімнату <span>→</span></a></section>
+    </main>
+    <footer class="dv-footer">DvizhGO · live rooms <a href="{{ url_for('index') }}">На головну →</a></footer>
+</div>
+<script>
+const guideVideo = document.querySelector('.dv-guide-video-player video');
+guideVideo.addEventListener('loadeddata', () => guideVideo.parentElement.classList.add('has-video'));
+</script>
+</body>
+</html>

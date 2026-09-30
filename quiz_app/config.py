@@ -21,6 +21,7 @@ class Settings:
     lobby_boost_enabled: bool
     socketio_message_queue: str | None
     avatar_lab_path: str
+    app_environment: str
 
     @property
     def sqlite_path(self) -> Path:
@@ -40,7 +41,12 @@ class Settings:
             lobby_boost_enabled=as_bool(os.getenv("LOBBY_BOOST_ENABLED"), False),
             socketio_message_queue=os.getenv("SOCKETIO_MESSAGE_QUEUE") or None,
             avatar_lab_path=os.getenv("AVATAR_LAB_PATH", "").strip().strip("/"),
+            app_environment=os.getenv("APP_ENV", "development").strip().lower(),
         )
+
+    @property
+    def is_production(self) -> bool:
+        return self.app_environment == "production"
 
 
 settings = Settings.from_environment()
