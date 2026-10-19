@@ -1,0 +1,93 @@
+/* Halloween 2026: an event-only layer on top of the DvizhGO visual system. */
+body.dv-menu,
+body.dv-lobby,
+body.dv-student-lobby,
+body.dv-quiz-page,
+body.dv-finish-page,
+body.dv-host-page,
+body.dv-quiz-builder-page {
+    --paper: #f0e3ca;
+    --ink: #1b1916;
+    --signal: #f47b27;
+    --signal-ink: #ac3d08;
+    --petrol: #314630;
+    --chalk: #fff3dc;
+    --faded: #675c4d;
+    --mustard: #e6ad43;
+}
+
+/* The public menu becomes a printed Halloween poster; actions stay unchanged. */
+.dv-menu:not(.dv-guide-page):not(.dv-mode-page) .dv-visual {
+    background: var(--ink) url("../images/halloween/night.svg") no-repeat center 54%;
+    background-size: min(78%, 500px) auto;
+}
+
+.dv-menu .dv-visual .word {
+    color: var(--chalk);
+}
+
+.dv-menu .dv-visual .word .go {
+    color: var(--ink);
+    background: var(--signal);
+    box-shadow: .045em .045em 0 var(--chalk);
+}
+
+.halloween-season {
+    position: absolute;
+    left: 7%;
+    bottom: 7%;
+    color: var(--chalk);
+    font: 900 10px/1 "Courier New", monospace;
+    letter-spacing: .14em;
+}
+
+/* A darker orange keeps small labels readable on the light paper surfaces. */
+.dv-live,
+.dv-count,
+.dv-guide-demo-top i,
+.dv-guide-demo-room b,
+.dv-finish-stat.accent strong,
+.dv-host-stage-state strong,
+.flash-question-footer strong {
+    color: var(--signal-ink);
+}
+
+/* Carry the accent through live screens without covering questions or controls. */
+.dv-lobby-header,
+.dv-student-head,
+.dv-quiz-page .dv-quiz-head,
+.dv-finish-head,
+.dv-host-header,
+.dv-quiz-builder-header {
+    box-shadow: inset 0 -4px 0 var(--signal);
+}
+
+.dv-lobby .dvd-stage,
+.dv-student-lobby .dvd-stage {
+    background-color: var(--chalk);
+}
+
+.dv-quiz-page .progress-fill {
+    background: var(--signal);
+}
+
+.dv-finish-hero {
+    background-image: repeating-linear-gradient(135deg, var(--signal) 0 10px, var(--ink) 10px 20px);
+    background-position: left bottom;
+    background-repeat: no-repeat;
+    background-size: 100% 8px;
+}
+
+.dv-finish-reaction {
+    background: var(--mustard);
+}
+
+@media (max-width: 900px) {
+    .dv-menu:not(.dv-guide-page):not(.dv-mode-page) .dv-visual {
+        background-size: auto 92%;
+        background-position: 75% center;
+    }
+    .halloween-season {
+        bottom: 9%;
+    }
+}

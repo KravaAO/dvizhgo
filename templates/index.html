@@ -5,6 +5,7 @@
     <title>DvizhGO — живі квізи для груп</title>
     <meta name="description" content="Створіть кімнату, підготуйте квіз і проведіть живу активність для своєї групи.">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/halloween.css') }}">
     <script src="{{ url_for('static', filename='js/toast.js') }}"></script>
 </head>
 <body class="dv-menu">
@@ -12,7 +13,7 @@
 <div class="dv-page">
     <header class="dv-header"><div class="dv-logo"><img class="dv-brand-image" src="{{ url_for('static', filename='images/gologo.png') }}" alt="DvizhGO"></div><nav><a href="{{ url_for('index') }}" aria-current="page">Головна</a><a href="{{ url_for('how_it_works') }}">Як це працює</a></nav><div class="dv-live">● LIVE</div></header>
     <main class="dv-main">
-        <section class="dv-visual"><div class="word">Dvizh<span class="go">GO</span></div></section>
+        <section class="dv-visual"><div class="word">Dvizh<span class="go">GO</span></div><span class="halloween-season" aria-hidden="true">HALLOWEEN / 2026</span></section>
         <section class="dv-actions">
             <button type="button" id="openJoin" class="dv-action">
                 <div class="dv-micro">01 / participant</div><h1>Увійти<br>в кімнату</h1>
