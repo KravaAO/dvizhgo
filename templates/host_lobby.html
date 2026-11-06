@@ -29,6 +29,13 @@
 <aside id="roomSettingsDrawer" class="dv-drawer" aria-hidden="true">
     <div class="dv-drawer-head"><span class="dv-micro">НАЛАШТУВАННЯ КІМНАТИ</span><button id="closeRoomSettings" class="dv-icon">×</button></div>
     <h2>Налаштування<br>кімнати</h2>
+    <label>Гра<select id="gameType"><option value="quiz">Квіз</option><option value="drawing">Малювалка</option></select></label>
+    <div id="drawingSettings" hidden>
+        <label>Кількість раундів <input id="drawingRounds" type="number" min="1" max="30" value="3"></label>
+        <label>Теми для малювання — по одній на рядок <textarea id="drawingPrompts" rows="6" maxlength="6029" placeholder="Космічний кіт&#10;Місто майбутнього&#10;Веселий дракон"></textarea></label>
+        <button id="saveDrawingSettings" type="button" class="dv-copy">Зберегти теми</button>
+        <p class="dv-drawer-note">Для кожного раунду потрібна окрема тема. Ведучий керує етапами гри.</p>
+    </div>
     <label>Режим проходження<select id="roomMode" data-custom-select><option value="self_paced">Самостійно</option><option value="live">Live</option></select></label>
     <a class="dv-drawer-link" href="{{ url_for('quizzes') }}">Редагувати / обрати квіз →</a>
     <p class="dv-drawer-note">Спершу підготуйте квіз. Після «Почати» всі учасники в лобі перейдуть до завдань.</p>

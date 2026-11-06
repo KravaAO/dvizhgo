@@ -401,11 +401,14 @@ async function pollLobby() {
         const data = await response.json();
         clockOffset = Date.parse(data.server_time) - Date.now();
         viewerId = data.viewer_id;
+        if (data.current_activity_type === 'drawing') { window.location.href = '/drawing'; return; }
         if (['duel', 'flash_question'].includes(data.current_activity_type) && !isHost) { window.location.href = '/activity'; return; }
         if (data.status === 'active' && data.has_active_attempt && !isHost) { window.location.href = '/quiz'; return; }
         resetScene(data.participants, data.boosts);
         const currentParticipant = data.participants.find(participant => String(participant.id) === String(viewerId));
         if (currentParticipant) updateAvatarPicker(currentParticipant.appearance);
+        const joinButton = document.getElementById('joinVoting');
+        if (joinButton && data.voting_joined) { joinButton.textContent = '✓ Ви берете участь у голосуванні'; joinButton.disabled = true; }
         lobbyCount.textContent = `${data.participants.length} учасник${data.participants.length === 1 ? '' : data.participants.length < 5 ? 'и' : 'ів'} у лобі`;
         if (data.boost_enabled) {
             latestBoost = data.boosts[String(data.viewer_id)] || null;
@@ -537,11 +540,45 @@ if (removeHeadwearButton) {
     });
 }
 
+const joinVotingButton = document.getElementById('joinVoting');
+if (joinVotingButton) joinVotingButton.addEventListener('click', async () => {
+    const response = await fetch('/api/voting/join', {method:'POST'});
+    if (response.ok) { joinVotingButton.disabled = true; joinVotingButton.textContent = '✓ Ви берете участь у голосуванні'; }
+    else showToast('Не вдалося приєднатися до голосування.', {type:'error'});
+});
+
 if (isHost) {
+    const gameType = document.getElementById('gameType');
+    gameType.addEventListener('change', () => { document.getElementById('drawingSettings').hidden = gameType.value !== 'drawing'; });
+    async function saveDrawing() {
+        const prompts = document.getElementById('drawingPrompts').value.split('\n').map(s => s.trim()).filter(Boolean);
+        const rounds = Number(document.getElementById('drawingRounds').value);
+        const response = await fetch('/api/drawing/settings', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({rounds, prompts})});
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error);
+    }
+    fetch('/api/drawing/settings').then(r => r.json()).then(data => {
+        document.getElementById('drawingRounds').value = data.settings.rounds;
+        document.getElementById('drawingPrompts').value = data.settings.prompts.join('\n');
+    });
+    document.getElementById('saveDrawingSettings').addEventListener('click', async () => {
+        try { await saveDrawing(); showToast('Теми збережено.', {type:'success'}); }
+        catch (error) { showToast(error.message, {type:'error'}); }
+    });
     document.getElementById('startQuiz').addEventListener('click', async () => {
         const button = document.getElementById('startQuiz');
         if (button.disabled) return;
         button.disabled = true;
+        if (gameType.value === 'drawing') {
+            try {
+                await saveDrawing();
+                const response = await fetch('/api/drawing/start', {method:'POST'});
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error);
+                window.location.href = '/drawing';
+            } catch (error) { button.disabled = false; showToast(error.message, {type:'error'}); }
+            return;
+        }
         for (let seconds = 3; seconds > 0; seconds -= 1) {
             button.textContent = `Старт через ${seconds}…`;
             await new Promise(resolve => setTimeout(resolve, 1000));
@@ -557,6 +594,7 @@ if (isHost) {
 
 connectRoomSocket({
     state(state) {
+        if (state.activity_type === 'drawing') { window.location.href = '/drawing'; return; }
         if (isHost && state.room_status !== 'lobby') {
             window.location.href = '/admin';
             return;

@@ -169,6 +169,58 @@ class RoomFirstRuntimeTest(unittest.TestCase):
         current = next(item for item in state["participants"] if item["id"] == participant_id)
         self.assertEqual(current["presence_state"], "away")
 
+    def test_active_room_is_not_finished_when_clients_stop_heartbeating(self):
+        """Room activity is durable; heartbeat controls participant presence only."""
+        host = server.app.test_client()
+        self.assertEqual(host.post("/rooms").status_code, 302)
+        with host.session_transaction() as host_session:
+            room_id = host_session["host_room_id"]
+
+        conn = server.get_db()
+        room_code = conn.execute("SELECT code FROM rooms WHERE id = ?", (room_id,)).fetchone()["code"]
+        conn.close()
+
+        participant = server.app.test_client()
+        self.assertEqual(participant.post("/join", data={"name": "Offline participant", "code": room_code}).status_code, 302)
+        with participant.session_transaction() as participant_session:
+            participant_id = participant_session["participant_id"]
+
+        self.assertEqual(host.post("/api/lobby/start", json={"mode": "self_paced"}).status_code, 200)
+
+        # Simulate a browser/computer shutdown: it can no longer send heartbeats.
+        conn = server.get_db()
+        conn.execute(
+            "UPDATE room_participants SET last_seen_at = ? WHERE id = ?",
+            ("2000-01-01T00:00:00", participant_id),
+        )
+        conn.commit()
+        conn.close()
+
+        # Re-initializing the app's persistent database must not reset a live room.
+        server.init_db()
+
+        state = host.get("/api/lobby").get_json()
+        stale_participant = next(item for item in state["participants"] if item["id"] == participant_id)
+        self.assertEqual(stale_participant["presence_state"], "away")
+        self.assertEqual(state["status"], "active")
+        self.assertEqual(state["runtime_state"], "active")
+        self.assertEqual(state["current_activity_type"], "quiz")
+
+        conn = server.get_db()
+        room = conn.execute("SELECT status FROM rooms WHERE id = ?", (room_id,)).fetchone()
+        runtime = server.get_runtime(conn, room_id)
+        activity = server.get_activity(conn, runtime["current_activity_id"])
+        conn.close()
+        self.assertEqual(room["status"], "active")
+        self.assertEqual((runtime["state"], activity["type"], activity["status"]), ("active", "quiz", "active"))
+
+        # Only an explicit host action ends the room and blocks future joins.
+        self.assertEqual(host.post("/api/admin/finish").status_code, 200)
+        self.assertEqual(
+            server.app.test_client().post("/join", data={"name": "Late participant", "code": room_code}).status_code,
+            404,
+        )
+
     def test_flash_question_pauses_quiz_and_resumes_after_close(self):
         host = server.app.test_client()
         host.post("/rooms")

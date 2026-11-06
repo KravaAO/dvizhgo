@@ -556,6 +556,18 @@ def initialize_database(database_url: str | None, sqlite_path: Path) -> None:
         )
         for statement in schema:
             connection.execute(statement)
+        id_type = "BIGSERIAL PRIMARY KEY" if is_postgres(database_url) else "INTEGER PRIMARY KEY AUTOINCREMENT"
+        connection.execute(f"""CREATE TABLE IF NOT EXISTS drawings (
+            id {id_type}, activity_id BIGINT NOT NULL, room_id BIGINT NOT NULL,
+            round_number INTEGER NOT NULL, participant_id BIGINT NOT NULL,
+            author TEXT NOT NULL, prompt TEXT NOT NULL, image TEXT NOT NULL,
+            share_token TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL, expires_at TEXT NOT NULL,
+            UNIQUE(activity_id, round_number, participant_id))""")
+        connection.execute("""CREATE TABLE IF NOT EXISTS drawing_votes (
+            activity_id BIGINT NOT NULL, round_number INTEGER NOT NULL,
+            voter_id BIGINT NOT NULL, drawing_id BIGINT NOT NULL,
+            PRIMARY KEY(activity_id, round_number, voter_id))""")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_drawings_expiry ON drawings(expires_at)")
         _apply_room_migrations(connection, database_url)
         connection.commit()
     finally:

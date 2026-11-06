@@ -63,6 +63,9 @@ def get_db():
 
 def init_db():
     initialize_database(DATABASE_URL, DB_PATH)
+    if not app.config.get("TESTING"):
+        from quiz_app.drawing import start_cleanup
+        start_cleanup()
 
 
 def build_analytics_summary():
@@ -535,6 +538,30 @@ def clear_room_runtime(conn, room_id):
     conn.execute("DELETE FROM students WHERE room_id = ?", (room_id,))
 
 
+def voting_joined(participant):
+    if not participant:
+        return False
+    try:
+        return json.loads(participant["metadata_json"] or "{}").get("voting_joined") is True
+    except (TypeError, ValueError, AttributeError):
+        return False
+
+
+@app.post("/api/voting/join")
+def join_voting():
+    conn = get_db()
+    participant = current_participant(conn)
+    if not participant:
+        conn.close()
+        return jsonify({"error": "Немає активної сесії."}), 401
+    metadata = json.loads(participant["metadata_json"] or "{}")
+    metadata["voting_joined"] = True
+    conn.execute("UPDATE room_participants SET metadata_json = ? WHERE id = ?", (json.dumps(metadata), participant["id"]))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
 def serialize_roulette(conn, round_row, viewer_id=None):
     if not round_row:
         return None
@@ -572,7 +599,11 @@ def serialize_roulette(conn, round_row, viewer_id=None):
         ).fetchone()
         user_vote = vote["choice_participant_id"] if vote else None
 
+    viewer = conn.execute("SELECT metadata_json FROM room_participants WHERE id = ?", (viewer_id,)).fetchone() if viewer_id else None
+    joined_voting = voting_joined(viewer)
     return {
+        "voting_joined": joined_voting,
+        "is_duelist": viewer_id in participant_ids if viewer_id else False,
         "id": round_row["id"],
         "question": round_row["question"],
         "candidate_pool": json.loads(round_row["candidate_pool_json"]),
@@ -591,6 +622,7 @@ def serialize_roulette(conn, round_row, viewer_id=None):
             viewer_id
             and round_row["status"] == "voting"
             and viewer_id not in participant_ids
+            and joined_voting
             and not user_vote
         ),
         "user_vote": user_vote,
@@ -720,6 +752,8 @@ def join_room():
     current_activity = get_activity(conn, runtime["current_activity_id"])
     destination = "lobby"
     if current_activity and current_activity["status"] == "active":
+        if current_activity["type"] == "drawing":
+            destination = "drawing.page"
         quiz_activity = resumed_quiz_activity(conn, current_activity)
         if quiz_activity and create_late_quiz_attempt(conn, participant_id, quiz_activity):
             destination = "activity" if current_activity["type"] in {"duel", "flash_question"} else "quiz"
@@ -754,6 +788,8 @@ def lobby():
     active_attempt = get_active_attempt(conn, participant["id"], room["id"])
     conn.commit()
     conn.close()
+    if current_activity and current_activity["type"] == "drawing":
+        return redirect(url_for("drawing.page"))
     if current_activity and current_activity["type"] in {"duel", "flash_question"}:
         return redirect(url_for("activity_stage"))
     if runtime["state"] == "active" and active_attempt and not active_attempt["finished_at"]:
@@ -819,6 +855,7 @@ def lobby_state():
         "boosts": boosts,
         "boost_enabled": LOBBY_BOOST_ACTIVE,
         "viewer_id": participant["id"] if participant else None,
+        "voting_joined": voting_joined(participant),
     })
 
 
@@ -1001,7 +1038,7 @@ def start_quiz():
     set_runtime(conn, room["id"], activity_id, "active")
     conn.execute(
         "UPDATE rooms SET status = 'active', settings_json = ? WHERE id = ?",
-        (json.dumps({"mode": mode}), room["id"]),
+        (json.dumps({**json.loads(room["settings_json"] or "{}"), "mode": mode}, ensure_ascii=False), room["id"]),
     )
     conn.commit()
     conn.close()
@@ -1277,7 +1314,7 @@ def roulette_vote():
         (round_row["id"],),
     ).fetchall()
     participant_ids = {row["participant_id"] for row in participants}
-    if participant_id in participant_ids or choice_student_id not in participant_ids:
+    if not voting_joined(participant_session) or participant_id in participant_ids or choice_student_id not in participant_ids:
         conn.close()
         return jsonify({"error": "You cannot vote for this participant"}), 403
 
@@ -1394,6 +1431,10 @@ def result():
     attempt = get_active_attempt(conn, participant["id"], participant["room_id"])
     runtime = get_runtime(conn, participant["room_id"])
     current_activity = get_activity(conn, runtime["current_activity_id"])
+    if current_activity and current_activity["type"] == "drawing":
+        conn.commit()
+        conn.close()
+        return redirect(url_for("drawing.page"))
     if current_activity and current_activity["type"] in {"duel", "flash_question"}:
         conn.commit()
         conn.close()
@@ -1485,6 +1526,9 @@ def admin():
     conn = get_db()
     runtime = get_runtime(conn, room["id"])
     current_activity = get_activity(conn, runtime["current_activity_id"])
+    if current_activity and current_activity["type"] == "drawing":
+        conn.close()
+        return redirect(url_for("drawing.page"))
     quiz_title = get_room_quiz_title(conn, room)
     extra_round = get_open_duel(conn, room["id"]) if current_activity and current_activity["type"] == "duel" else None
     quiz_question_count = len(load_room_questions(conn, room["id"]))
@@ -2017,3 +2061,7 @@ def admin_finish_room():
 if __name__ == "__main__":
     init_db()
     app.run(host="0.0.0.0", port=5000, debug=True)
+
+
+from quiz_app.drawing import bp as drawing_blueprint
+app.register_blueprint(drawing_blueprint)

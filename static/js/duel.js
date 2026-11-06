@@ -198,6 +198,12 @@ function render(round) {
 
     participants.classList.remove('duel-participants-selected');
     participants.replaceChildren();
+    if (!round.voting_joined && !round.is_duelist) {
+        const join = document.createElement('button');
+        join.className = 'secondary-btn'; join.textContent = 'Приєднатися до голосування';
+        join.onclick = async () => { try { await send('/api/voting/join', {}); poll(); } catch (error) { showToast(error.message, {type:'error'}); } };
+        action.append(join);
+    }
     const list = document.createElement('div');
     list.className = 'roulette-answer-list';
     round.participants.forEach(item => {
@@ -241,7 +247,8 @@ function render(round) {
         list.append(card);
     });
     action.append(list);
-    if (round.user_vote) notice.textContent = 'Ваш лайк уже зараховано.';
+    if (round.is_duelist) notice.textContent = 'Учасники дуелі не голосують за відповіді.';
+    else if (round.user_vote) notice.textContent = 'Ваш лайк уже зараховано.';
 }
 
 async function poll() {
