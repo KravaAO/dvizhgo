@@ -12,6 +12,33 @@
     --shadow: 0 24px 70px rgba(0,0,0,0.30);
 }
 
+@view-transition {
+    navigation: auto;
+}
+
+::view-transition-old(root) {
+    animation: dv-page-exit 140ms cubic-bezier(.23, 1, .32, 1) both;
+}
+
+::view-transition-new(root) {
+    animation: dv-page-enter 200ms cubic-bezier(.23, 1, .32, 1) both;
+}
+
+@keyframes dv-page-exit {
+    to { opacity: 0; transform: translateY(-6px); }
+}
+
+@keyframes dv-page-enter {
+    from { opacity: 0; transform: translateY(8px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    ::view-transition-old(root),
+    ::view-transition-new(root) {
+        animation-duration: .01ms;
+    }
+}
+
 /* Interactive HTML demo in the first public guide step. */
 .dv-guide-demo { width:min(100%,760px); overflow:hidden; border:2px solid var(--ink); background:var(--chalk); box-shadow:8px 8px 0 var(--ink); }.dv-guide-demo-top { display:flex; justify-content:space-between; padding:12px 14px; border-bottom:2px solid var(--ink); background:var(--paper); font:900 9px/1 "Courier New",monospace; letter-spacing:.1em; }.dv-guide-demo-top i { color:var(--signal); font-style:normal; }.dv-guide-demo-body { position:relative; min-height:300px; padding:30px; background:linear-gradient(rgba(23,23,20,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(23,23,20,.035) 1px,transparent 1px),var(--chalk); background-size:24px 24px; }.dv-guide-demo-body>p,.dv-guide-demo-created span { margin:0; color:var(--faded); font:900 10px/1 "Courier New",monospace; letter-spacing:.1em; }.dv-guide-demo-body h3 { margin:15px 0 10px; font-size:clamp(42px,6vw,70px); line-height:.78; letter-spacing:-.09em; text-transform:uppercase; }.dv-guide-demo-body>small { display:block; color:var(--faded); font-size:14px; }.dv-guide-demo-body button { margin-top:28px; border:2px solid var(--ink); background:var(--signal); box-shadow:5px 5px 0 var(--ink); padding:13px 16px; color:var(--ink); font-weight:1000; }.dv-guide-demo-body button b { margin-left:20px; font-size:20px; }.dv-guide-demo-body button:hover:not(:disabled) { transform:translate(-2px,-2px); box-shadow:7px 7px 0 var(--ink); }.dv-guide-demo-created { position:absolute; inset:0; display:none; padding:30px; background:var(--petrol); color:var(--chalk); }.dv-guide-demo.is-created .dv-guide-demo-created { display:flex; flex-direction:column; justify-content:center; align-items:flex-start; }.dv-guide-demo-created span { color:rgba(248,243,233,.65); }.dv-guide-demo-created strong { margin:16px 0 10px; font-size:clamp(52px,8vw,90px); line-height:.8; letter-spacing:-.08em; }.dv-guide-demo-created small { border-top:2px solid var(--chalk); padding-top:13px; }
 
@@ -868,6 +895,14 @@ th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spa
 .dv-menu .dv-action { appearance:none; width:100%; background:transparent; color:var(--ink); text-align:left; font:inherit; cursor:pointer; }
 .dv-action-arrow { position:absolute; right:28px; bottom:22px; z-index:1; font-size:34px; transition:transform .18s ease; }
 .dv-action:hover .dv-action-arrow { transform:translateX(9px); }
+.dv-actions { grid-template-rows:repeat(2,minmax(0,1fr)); }
+.dv-action { min-width:0; padding:clamp(20px,3vw,34px); }
+.dv-action p { max-width:32ch; line-height:1.45; }
+.dv-action:focus-visible { z-index:2; outline:3px solid var(--signal); outline-offset:-7px; color:var(--chalk); }
+.dv-action:focus-visible::before { transform:translateX(0); }
+.dv-action:focus-visible .dv-micro,.dv-action:focus-visible p { color:rgba(248,243,233,.68); }
+.dv-action:focus-visible .dv-action-arrow { transform:translateX(9px); }
+@media(max-width:760px){.dv-action{padding:24px 20px}.dv-action h1{font-size:clamp(36px,10vw,48px)}.dv-action-arrow{right:20px;bottom:16px}}
 
 /* Public room-host guide. Replace every placeholder with the matching WebP screenshot later. */
 .dv-footer a { float:right; color:var(--ink); text-decoration:none; }.dv-footer a:hover { color:var(--signal); }
