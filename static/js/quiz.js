@@ -420,7 +420,7 @@ function goToNextQuestion() {
     stopActiveSound();
     stopRain();
     card.classList.add("leaving");
-    window.dvNavigate(nextUrl, 340);
+    window.dvNavigate(nextUrl);
 }
 
 function showReaction(message) {
@@ -501,7 +501,7 @@ async function submitAnswer() {
 
         setTimeout(() => {
             card.classList.add("leaving");
-            window.dvNavigate(data.finished ? "/result" : "/quiz", 340);
+            window.dvNavigate(data.finished ? "/result" : "/quiz");
         }, 1050);
 
     } catch (error) {

@@ -1,6 +1,6 @@
 (() => {
     const transitionKey = 'dv-page-transition-pending';
-    const transitionDuration = 270;
+    const transitionDuration = 180;
     const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
     const root = document.documentElement;
 
@@ -23,7 +23,7 @@
     });
 
     let navigating = false;
-    function navigateTo(destination, duration = transitionDuration) {
+    function navigateTo(destination) {
         const target = new URL(destination, window.location.href);
         if (
             target.origin !== window.location.origin
@@ -39,7 +39,7 @@
         navigating = true;
         sessionStorage.setItem(transitionKey, '1');
         root.classList.add('dv-page-leaving');
-        window.setTimeout(() => window.location.assign(target.href), duration);
+        window.setTimeout(() => window.location.assign(target.href), transitionDuration);
     }
 
     window.dvNavigate = navigateTo;
