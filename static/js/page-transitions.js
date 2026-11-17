@@ -1,13 +1,14 @@
 (() => {
     const transitionKey = 'dv-page-transition-pending';
-    const transitionDuration = 180;
+    const leaveDuration = 150;
+    const enterDuration = 230;
     const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
     const root = document.documentElement;
 
     function enterPage() {
         if (motionPreference.matches) return;
         root.classList.add('dv-page-entering');
-        window.setTimeout(() => root.classList.remove('dv-page-entering'), transitionDuration + 40);
+        window.setTimeout(() => root.classList.remove('dv-page-entering'), enterDuration + 40);
     }
 
     if (sessionStorage.getItem(transitionKey)) {
@@ -33,7 +34,7 @@
         navigating = true;
         sessionStorage.setItem(transitionKey, '1');
         root.classList.add('dv-page-leaving');
-        window.setTimeout(continueNavigation, transitionDuration);
+        window.setTimeout(continueNavigation, leaveDuration);
         return true;
     }
 
