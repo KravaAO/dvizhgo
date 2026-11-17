@@ -401,8 +401,8 @@ async function pollLobby() {
         const data = await response.json();
         clockOffset = Date.parse(data.server_time) - Date.now();
         viewerId = data.viewer_id;
-        if (['duel', 'flash_question'].includes(data.current_activity_type) && !isHost) { window.location.href = '/activity'; return; }
-        if (data.status === 'active' && data.has_active_attempt && !isHost) { window.location.href = '/quiz'; return; }
+        if (['duel', 'flash_question'].includes(data.current_activity_type) && !isHost) { window.dvNavigate('/activity'); return; }
+        if (data.status === 'active' && data.has_active_attempt && !isHost) { window.dvNavigate('/quiz'); return; }
         resetScene(data.participants, data.boosts);
         const currentParticipant = data.participants.find(participant => String(participant.id) === String(viewerId));
         if (currentParticipant) updateAvatarPicker(currentParticipant.appearance);
@@ -551,22 +551,22 @@ if (isHost) {
         if (!response.ok) { button.disabled = false; button.textContent = 'Почати — дати завдання →'; return showToast(data.error || 'Не вдалося розпочати квіз.', {type: 'error'}); }
         button.textContent = 'Квіз розпочато';
         showToast('Учасники отримали завдання.', {type: 'success'});
-        setTimeout(() => { window.location.href = '/admin'; }, 500);
+        window.dvNavigate('/admin');
     });
 }
 
 connectRoomSocket({
     state(state) {
         if (isHost && state.room_status !== 'lobby') {
-            window.location.href = '/admin';
+            window.dvNavigate('/admin');
             return;
         }
         if (!isHost && ['duel', 'flash_question'].includes(state.activity_type)) {
-            window.location.href = '/activity';
+            window.dvNavigate('/activity');
             return;
         }
         if (!isHost && state.activity_type === 'quiz' && state.activity_status === 'active') {
-            window.location.href = '/quiz';
+            window.dvNavigate('/quiz');
             return;
         }
         pollLobby();

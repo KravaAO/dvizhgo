@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Квізи · {{ room.title }}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="{{ url_for('static', filename='js/page-transitions.js') }}"></script>
     <script src="{{ url_for('static', filename='js/toast.js') }}"></script>
 </head>
 <body class="dv-quiz-builder-page">
@@ -189,7 +190,7 @@
         library.innerHTML = items.map(quiz => `
             <article class="quiz-library-item ${quiz.active ? 'active-quiz' : ''}">
                 <div><strong>${escapeHtml(quiz.title)}</strong><span>${quiz.count} питань${quiz.active ? ' · активний' : ''}</span></div>
-                ${quiz.active ? '<span class="status-pill done">Активний</span>' : `<button class="secondary-btn" data-quiz-id="${quiz.id ?? 'default'}">Обрати</button>`}
+                ${quiz.active ? '<span class="quiz-active-badge">Активний</span>' : `<button class="secondary-btn" data-quiz-id="${quiz.id ?? 'default'}">Обрати</button>`}
             </article>`).join('');
         library.querySelectorAll('[data-quiz-id]').forEach(button => button.addEventListener('click', () => activateQuiz(button.dataset.quizId)));
     }
@@ -366,7 +367,7 @@
         if (!res.ok) { button.disabled = false; button.textContent = 'Почати квіз'; return showToast(data.error || 'Не вдалося почати квіз.', {type:'error'}); }
         button.textContent = 'Квіз розпочато';
         showToast('Учасники отримали завдання.', {type:'success'});
-        setTimeout(() => { window.location.href = '/admin'; }, 500);
+        window.dvNavigate('/admin');
     });
     </script>
 </body>

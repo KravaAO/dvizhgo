@@ -153,7 +153,7 @@ async function send(url, payload) {
 }
 
 function render(round) {
-    if (!round) { window.location.href = '/lobby'; return; }
+    if (!round) { window.dvNavigate('/lobby'); return; }
     latestRound = round;
     if (displayedRoundId !== round.id) {
         displayedRoundId = round.id;
@@ -260,7 +260,7 @@ connectRoomSocket({
             return;
         }
         stopWheelTimers();
-        window.location.href = state.activity_type === 'quiz' ? '/quiz' : '/lobby';
+        window.dvNavigate(state.activity_type === 'quiz' ? '/quiz' : '/lobby');
     },
     duel() { poll(); },
 });

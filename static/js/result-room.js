@@ -1,6 +1,6 @@
 connectRoomSocket({
     state(state) {
-        if (['duel', 'flash_question'].includes(state.activity_type)) window.location.href = '/activity';
+        if (['duel', 'flash_question'].includes(state.activity_type)) window.dvNavigate('/activity');
     },
-    duel() { window.location.href = '/activity'; },
+    duel() { window.dvNavigate('/activity'); },
 });
