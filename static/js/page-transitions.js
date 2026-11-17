@@ -23,6 +23,20 @@
     });
 
     let navigating = false;
+    function transitionBeforeNavigation(continueNavigation) {
+        if (motionPreference.matches) {
+            continueNavigation();
+            return true;
+        }
+        if (navigating) return false;
+
+        navigating = true;
+        sessionStorage.setItem(transitionKey, '1');
+        root.classList.add('dv-page-leaving');
+        window.setTimeout(continueNavigation, transitionDuration);
+        return true;
+    }
+
     function navigateTo(destination) {
         const target = new URL(destination, window.location.href);
         if (
@@ -34,15 +48,29 @@
             window.location.assign(target.href);
             return;
         }
-        if (navigating) return;
+        transitionBeforeNavigation(() => window.location.assign(target.href));
+    }
 
-        navigating = true;
-        sessionStorage.setItem(transitionKey, '1');
-        root.classList.add('dv-page-leaving');
-        window.setTimeout(() => window.location.assign(target.href), transitionDuration);
+    function submitForm(form) {
+        const destination = new URL(form.action, window.location.href);
+        const target = form.getAttribute('target');
+        const submit = () => HTMLFormElement.prototype.submit.call(form);
+        if (
+            destination.origin !== window.location.origin
+            || !/^https?:$/.test(destination.protocol)
+            || (target && target.toLowerCase() !== '_self')
+            || form.method.toLowerCase() === 'dialog'
+            || motionPreference.matches
+            || navigating
+        ) {
+            submit();
+            return;
+        }
+        transitionBeforeNavigation(submit);
     }
 
     window.dvNavigate = navigateTo;
+    window.dvSubmitForm = submitForm;
 
     document.addEventListener('click', event => {
         if (
@@ -64,5 +92,19 @@
         if (destination.pathname === window.location.pathname && destination.search === window.location.search) return;
         event.preventDefault();
         navigateTo(destination.href);
+    });
+
+    document.addEventListener('submit', event => {
+        const form = event.target;
+        if (
+            event.defaultPrevented
+            || !(form instanceof HTMLFormElement)
+            || (form.target && form.target.toLowerCase() !== '_self')
+            || form.method.toLowerCase() === 'dialog'
+        ) return;
+        const destination = new URL(form.action, window.location.href);
+        if (destination.origin !== window.location.origin || !/^https?:$/.test(destination.protocol)) return;
+        event.preventDefault();
+        submitForm(form);
     });
 })();
