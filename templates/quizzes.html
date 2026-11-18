@@ -10,12 +10,16 @@
 </head>
 <body class="dv-quiz-builder-page">
     <header class="dv-quiz-builder-header">
-        <a class="dv-host-brand" href="{{ url_for('admin') }}" aria-label="DvizhGO · адмінка">Dvizh<span>GO</span></a>
+        <a class="dv-quiz-builder-brand" href="{{ url_for('admin') }}" aria-label="DvizhGO · адмінка"><img src="{{ url_for('static', filename='images/gologo.png') }}" alt="DvizhGO"></a>
         <div class="dv-quiz-builder-room"><span>КІМНАТА / {{ room.code }}</span><strong>{{ room.title }}</strong></div>
         <div class="dv-quiz-builder-actions"><a href="{{ url_for('host_lobby') }}">← Назад у лобі</a><button id="startFromQuizzes" type="button">Почати квіз</button></div>
     </header>
 
     <main class="dv-quiz-builder-shell">
+        <section class="dv-quiz-builder-intro" aria-labelledby="quiz-builder-title">
+            <div><p class="dv-host-micro">ПІДГОТОВКА КІМНАТИ</p><h1 id="quiz-builder-title">Оберіть квіз<br>для групи.</h1><p>Виберіть готовий набір або створіть свій — ви зможете перевірити кожне питання перед запуском.</p></div>
+            <div class="dv-quiz-builder-intro-note"><span>СПОЧАТКУ</span><strong>Оберіть або створіть квіз</strong><p>Потім поверніться в лобі та запустіть його для учасників.</p></div>
+        </section>
         <section class="dv-builder-panel dv-builder-library">
             <div class="roulette-admin-head">
                 <div>
@@ -23,7 +27,7 @@
                     <p class="microcopy">Активний квіз отримають нові учасники, які приєднаються до кімнати.</p>
                 </div>
             </div>
-            <div id="quizLibrary" class="quiz-library"></div>
+            <div id="quizLibrary" class="quiz-library" aria-live="polite"></div>
         </section>
 
         <section class="dv-builder-panel dv-builder-ai">
