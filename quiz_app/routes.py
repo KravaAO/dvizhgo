@@ -642,7 +642,9 @@ def analytics_logout():
 @app.get("/how-it-works")
 def how_it_works():
     """Public onboarding guide; it deliberately contains no room data."""
-    return render_template("how_it_works.html")
+    return render_template(
+        "how_it_works.html", guide_video_available=(BASE_DIR / "static/video/dvizhgo-guide.mp4").is_file(),
+    )
 
 
 @app.get("/how-it-works/dvizh-duel")
