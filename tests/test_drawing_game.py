@@ -87,6 +87,53 @@ class DrawingGameTest(unittest.TestCase):
         self.assertEqual(conn.execute('SELECT COUNT(*) AS n FROM drawing_votes').fetchone()['n'], 0)
         conn.close()
 
+    def set_round_deadline(self, seconds_from_now):
+        conn = server.get_db()
+        row = conn.execute("SELECT id, config_json FROM activities WHERE type = 'drawing' AND status = 'active'").fetchone()
+        config = json.loads(row['config_json'])
+        config['ends_at'] = (datetime.now() + timedelta(seconds=seconds_from_now)).isoformat(timespec='milliseconds')
+        conn.execute('UPDATE activities SET config_json = ? WHERE id = ?', (json.dumps(config), row['id']))
+        conn.commit(); conn.close()
+
+    def test_time_limit_is_validated_counted_down_and_enforced(self):
+        host = self.host
+        a, b, _ = self.players
+        base = {'rounds': 2, 'prompts': ['one', 'two']}
+        for invalid in (45, 0, '60', True, 3600):
+            self.assertEqual(host.post('/api/drawing/settings', json={**base, 'time_limit': invalid}).status_code, 400)
+        saved = host.post('/api/drawing/settings', json={**base, 'time_limit': 30}).get_json()['settings']
+        self.assertEqual(saved['time_limit'], 30)
+        self.assertIn(b'value="30" checked', host.get('/admin/drawing').data)
+        self.assertEqual(host.post('/api/drawing/start').status_code, 200)
+
+        state = a.get('/api/drawing/current').get_json()
+        self.assertEqual(state['time_limit'], 30)
+        self.assertTrue(25000 < state['time_left_ms'] <= 30000)
+        self.assertEqual(state['submit_grace_ms'], drawing.SUBMIT_GRACE_SECONDS * 1000)
+
+        # An auto-submit that lands inside the grace window is accepted...
+        self.set_round_deadline(-(drawing.SUBMIT_GRACE_SECONDS - 2))
+        self.assertEqual(a.get('/api/drawing/current').get_json()['time_left_ms'], 0)
+        self.assertEqual(a.post('/api/drawing/submit', json={'round': 1, 'image': PNG}).status_code, 200)
+        # ...but anything later is rejected.
+        self.set_round_deadline(-(drawing.SUBMIT_GRACE_SECONDS + 1))
+        late = b.post('/api/drawing/submit', json={'round': 1, 'image': PNG})
+        self.assertEqual(late.status_code, 409)
+
+        # The next round gets a fresh timer; voting carries no countdown.
+        self.assertEqual(host.post('/api/drawing/advance', json={'round': 1, 'phase': 'drawing'}).status_code, 200)
+        self.assertNotIn('time_left_ms', host.get('/api/drawing/current').get_json())
+        self.assertEqual(host.post('/api/drawing/advance', json={'round': 1, 'phase': 'voting'}).status_code, 200)
+        self.assertTrue(25000 < a.get('/api/drawing/current').get_json()['time_left_ms'] <= 30000)
+
+    def test_rooms_saved_without_time_limit_use_the_default(self):
+        conn = server.get_db()
+        conn.execute('UPDATE rooms SET settings_json = ? WHERE id = ?', (json.dumps({'drawing': {'rounds': 1, 'prompts': ['old']}}), self.room_id))
+        conn.commit(); conn.close()
+        self.assertIn('Час · 1:30'.encode(), self.host.get('/lobby/host').data)
+        self.assertEqual(self.host.post('/api/drawing/start').status_code, 200)
+        self.assertEqual(self.players[0].get('/api/drawing/current').get_json()['time_limit'], drawing.DEFAULT_TIME_LIMIT)
+
     def test_duel_spectator_votes_directly_and_duelists_cannot_vote(self):
         self.host.post('/api/lobby/start', json={'mode':'self_paced'})
         self.assertEqual(self.host.post('/api/admin/roulette', json={'question':'Question?'}).status_code, 201)
@@ -127,7 +174,7 @@ class DrawingGameTest(unittest.TestCase):
         self.assertEqual(host.post('/api/drawing/settings', json=config).status_code, 200)
         for mode in ('quiz', 'drawing'):
             self.assertEqual(host.post('/api/lobby/room-mode', json={'room_mode':mode}).status_code, 200)
-        self.assertEqual(host.get('/api/drawing/settings').get_json()['settings'], config)
+        self.assertEqual(host.get('/api/drawing/settings').get_json()['settings'], {**config, 'time_limit': drawing.DEFAULT_TIME_LIMIT})
         self.assertEqual(host.get('/api/admin/quizzes').get_json()['active_quiz_id'], quiz['id'])
 
         with host.session_transaction() as credentials:

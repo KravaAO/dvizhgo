@@ -1,11 +1,17 @@
 ﻿(() => {
     const root = document.getElementById('drawingContent');
     const progress = document.getElementById('drawingProgress');
+    const timer = document.getElementById('drawingTimer');
     const isHost = document.body.dataset.host === 'true';
+    // Values that change on every poll; they update in place instead of
+    // rebuilding the screen.
+    const LIVE_FIELDS = ['time_left_ms'];
     let lastKey = '', state = null;
     // The board survives re-renders of the same round, so polling or socket
     // updates never wipe a picture that is still being drawn.
     let board = null, boardRound = null;
+    // Deadline on the monotonic clock; the server only sends "ms left".
+    let deadlineAt = null, timeUpRound = null, lateRefreshRound = null;
 
     const el = (tag, text, cls) => { const node = document.createElement(tag); if (text !== undefined) node.textContent = text; if (cls) node.className = cls; return node; };
     async function send(url, body = {}) {
@@ -19,15 +25,22 @@
         b.onclick = async () => { b.disabled = true; try { await fn(); } catch (error) { showToast(error.message, {type:'error'}); } finally { b.disabled = false; } };
         return b;
     }
+    function renderKey(next) {
+        const stable = {...next};
+        LIVE_FIELDS.forEach(field => delete stable[field]);
+        return JSON.stringify(stable);
+    }
     async function refresh() {
         try {
             const response = await fetch('/api/drawing/current', {cache:'no-store'});
             if (response.status === 404) { window.location.href = '/lobby'; return; }
             if (!response.ok) return;
             const next = await response.json();
-            const key = JSON.stringify(next);
             state = next;
+            deadlineAt = typeof next.time_left_ms === 'number' ? performance.now() + next.time_left_ms : null;
+            const key = renderKey(next);
             if (key !== lastKey) { lastKey = key; render(); }
+            tick();
         } catch (error) { console.error(error); }
     }
     const update = async (url, data = {}) => { await send(url, data); await refresh(); };
@@ -37,6 +50,45 @@
         board.destroy();
         board = null;
         boardRound = null;
+    }
+
+    function formatTime(ms) {
+        const seconds = Math.ceil(Math.max(0, ms) / 1000);
+        return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+    }
+
+    function tick() {
+        const remaining = deadlineAt === null ? null : deadlineAt - performance.now();
+        const counting = state && state.phase === 'drawing' && remaining !== null;
+        timer.hidden = !counting;
+        document.body.classList.toggle('drawing-page--timed', Boolean(counting));
+        if (!counting) return;
+        timer.textContent = `⏱ ${formatTime(remaining)}`;
+        timer.classList.toggle('urgent', remaining <= 10000);
+        if (remaining <= 0 && !isHost && !state.submitted && board && timeUpRound !== state.round) handleTimeUp();
+        // Once the grace window has passed, ask the server to close the round.
+        if (remaining <= -(state.submit_grace_ms + 500) && lateRefreshRound !== state.round) {
+            lateRefreshRound = state.round;
+            refresh();
+        }
+    }
+
+    async function handleTimeUp() {
+        const round = state.round;
+        timeUpRound = round;
+        board.setDisabled(true);
+        if (board.isBlank()) {
+            showToast('Час вийшов. Порожнє полотно не надсилається.', {type:'info'});
+            render();
+            return;
+        }
+        try {
+            await send('/api/drawing/submit', {round, image:board.toPng()});
+            showToast('Час вийшов — малюнок надіслано!', {type:'success'});
+        } catch (error) {
+            showToast(error.message, {type:'error'});
+        }
+        await refresh();
     }
 
     async function submitDrawing() {
@@ -62,7 +114,8 @@
     function render() {
         progress.textContent = `РАУНД ${state.round} / ${state.rounds}`;
         root.replaceChildren();
-        const drawingNow = state.phase === 'drawing' && !isHost && !state.submitted;
+        const timedOut = timeUpRound === state.round;
+        const drawingNow = state.phase === 'drawing' && !isHost && !state.submitted && !timedOut;
         document.body.classList.toggle('drawing-page--workspace', drawingNow);
         if (drawingNow) { renderWorkspace(); return; }
         dropBoard();
@@ -72,7 +125,8 @@
         content.append(el('h1', state.phase === 'results' ? 'Ось наші переможці!' : state.prompt));
         if (state.phase === 'drawing') {
             if (isHost) content.append(el('p', 'Учасники малюють. Коли всі будуть готові, відкрийте голосування.'));
-            else content.append(el('p', 'Ваш малюнок надіслано! Очікуємо голосування.'));
+            else if (state.submitted) content.append(el('p', 'Ваш малюнок надіслано! Очікуємо голосування.'));
+            else content.append(el('p', 'Час вийшов. Очікуємо голосування.'));
         } else if (state.phase === 'voting') {
             content.append(el('p', 'Роботи анонімні до кінця гри. Можна віддати один голос за чужий малюнок.'));
             if (state.voted) content.append(el('p', 'Ваш голос зараховано ✓'));
@@ -105,5 +159,5 @@
         }
     }
     connectRoomSocket({drawing:refresh, state(s) { if (s.activity_type !== 'drawing') window.location.href = '/lobby'; }});
-    refresh(); setInterval(refresh, 5000);
+    refresh(); setInterval(refresh, 5000); setInterval(tick, 250);
 })();

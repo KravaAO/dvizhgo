@@ -13,6 +13,12 @@ from quiz_app.services.room_runtime import get_activity, get_runtime, now_iso, s
 bp = Blueprint("drawing", __name__)
 _cleanup_started = False
 
+TIME_LIMIT_OPTIONS = (30, 60, 90, 120, 180, 300)
+DEFAULT_TIME_LIMIT = 90
+# Drawings that the browser auto-submits when the timer hits zero arrive a
+# moment after the deadline; they are still accepted inside this window.
+SUBMIT_GRACE_SECONDS = 5
+
 
 def api():
     from quiz_app import routes
@@ -62,17 +68,34 @@ def validated_settings(data):
         raise ValueError("Некоректні налаштування Малювалки.")
     prompts = data.get("prompts")
     rounds = data.get("rounds", 3)
+    time_limit = data.get("time_limit", DEFAULT_TIME_LIMIT)
     if not isinstance(prompts, list) or not all(isinstance(p, str) and 0 < len(p.strip()) <= 200 for p in prompts):
         raise ValueError("Додайте непорожні теми до 200 символів кожна.")
     if isinstance(rounds, bool) or not isinstance(rounds, int) or not 1 <= rounds <= 30:
         raise ValueError("Кількість раундів має бути від 1 до 30.")
     if len(prompts) < rounds or len(prompts) > 30:
         raise ValueError("Додайте окрему тему для кожного раунду (до 30 тем).")
-    return {"prompts": [p.strip() for p in prompts], "rounds": rounds}
+    if isinstance(time_limit, bool) or time_limit not in TIME_LIMIT_OPTIONS:
+        raise ValueError("Оберіть час на малювання зі списку.")
+    return {"prompts": [p.strip() for p in prompts], "rounds": rounds, "time_limit": time_limit}
 
 
 def saved_settings(room_settings):
-    return room_settings.get("drawing", {"rounds": 3, "prompts": []})
+    # Rooms saved before the time limit existed keep working with the default.
+    return {"rounds": 3, "prompts": [], "time_limit": DEFAULT_TIME_LIMIT, **room_settings.get("drawing", {})}
+
+
+def open_drawing_round(config):
+    """Start the drawing timer for the config's current round."""
+    config["phase"] = "drawing"
+    config["ends_at"] = (datetime.now() + timedelta(seconds=config["time_limit"])).isoformat(timespec="milliseconds")
+
+
+def drawing_time_left(config):
+    """Seconds until the round deadline, or None for games without a timer."""
+    if config.get("phase") != "drawing" or not config.get("ends_at"):
+        return None
+    return (datetime.fromisoformat(config["ends_at"]) - datetime.now()).total_seconds()
 
 
 def settings_ready(config):
@@ -91,7 +114,7 @@ def editor():
     if room['status'] != 'lobby':
         return redirect(url_for('admin'))
     config = saved_settings(json.loads(room['settings_json'] or '{}'))
-    return render_template('drawing_settings.html', room=room, config=config)
+    return render_template('drawing_settings.html', room=room, config=config, time_limit_options=TIME_LIMIT_OPTIONS)
 
 
 @bp.route('/api/drawing/settings', methods=['GET', 'POST'])
@@ -127,7 +150,8 @@ def start():
 
 def create_activity(conn, room_id, room_settings):
     config = validated_settings(saved_settings(room_settings))
-    config.update(round=1, phase='drawing')
+    config["round"] = 1
+    open_drawing_round(config)
     return conn.insert_and_get_id(
         "INSERT INTO activities (room_id, type, status, config_json, started_at) VALUES (?, 'drawing', 'active', ?, ?)",
         (room_id, json.dumps(config, ensure_ascii=False), now_iso()),
@@ -158,6 +182,12 @@ def state(conn, activity, participant, is_host):
     result = {'round': number, 'rounds': config['rounds'], 'phase': phase,
               'prompt': config['prompts'][number - 1], 'is_host': is_host,
               'submitted': any(r['round_number'] == number and r['participant_id'] == voter_id for r in rows)}
+    if phase == 'drawing':
+        # A relative value: the browser never compares its clock with ours.
+        time_left = drawing_time_left(config)
+        result['time_limit'] = config.get('time_limit')
+        result['time_left_ms'] = None if time_left is None else max(0, int(time_left * 1000))
+        result['submit_grace_ms'] = SUBMIT_GRACE_SECONDS * 1000
     if phase == 'voting':
         vote = conn.execute('SELECT drawing_id FROM drawing_votes WHERE activity_id = ? AND round_number = ? AND voter_id = ?', (activity['id'], number, voter_id)).fetchone()
         result['voted'] = bool(vote)
@@ -217,7 +247,11 @@ def submit():
     if config['phase'] != 'drawing' or data.get('round') != config['round']:
         conn.close()
         return jsonify(error='Цей раунд уже завершено.'), 409
-    existing = conn.execute('SELECT id FROM drawings WHERE activity_id = ? AND round_number = ? AND participant_id = ?', (activity['id'], config['round'], participant['id'])).fetchone()
+    time_left = drawing_time_left(config)
+    if time_left is not None and time_left < -SUBMIT_GRACE_SECONDS:
+        conn.close()
+        return jsonify(error='Час на малювання вийшов.'), 409
+    existing =conn.execute('SELECT id FROM drawings WHERE activity_id = ? AND round_number = ? AND participant_id = ?', (activity['id'], config['round'], participant['id'])).fetchone()
     if existing:
         conn.close()
         return jsonify(error='Малюнок уже надіслано.'), 409
@@ -291,7 +325,10 @@ def advance():
     elif config['phase'] == 'voting':
         if config['round'] < config['rounds']:
             config['round'] += 1
-            config['phase'] = 'drawing'
+            if config.get('time_limit'):
+                open_drawing_round(config)
+            else:
+                config['phase'] = 'drawing'
         else:
             config['phase'] = 'results'
     else:

@@ -75,7 +75,7 @@ Room — довгоживуча live-сесія
 | Створити room | з головної | створює room у `lobby` | room, host access token |
 | Обрати режим кімнати | lobby, немає current activity | задає формат наступного запуску | `room_mode` |
 | Обрати квіз | у бібліотеці | встановлює `active_quiz_id` | бібліотека квізів |
-| Зберегти теми Малювалки | редактор тем, room у lobby | оновлює кількість раундів і теми для наступного запуску | `rooms.settings_json.drawing` |
+| Зберегти налаштування Малювалки | редактор тем, room у lobby | оновлює кількість раундів, теми й час на раунд (30 с – 5 хв, типово 1,5 хв) для наступного запуску | `rooms.settings_json.drawing` |
 | Почати квіз | lobby, вибрано «Квіз» | створює active quiz activity і attempts | snapshot питань, attempts |
 | Почати Малювалку | lobby, вибрано «Малювалка» і збережено теми | створює active drawing activity і відкриває перший раунд | snapshot тем і кількості раундів |
 | ДВИЖ-ДУЕЛЬ | лише під час active quiz | quiz `paused`, duel `active` | quiz progress не втрачається |

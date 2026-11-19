@@ -9,7 +9,7 @@
         event.preventDefault();
         button.disabled = true;
         rounds.readOnly = prompts.readOnly = true;
-        status.textContent = 'Зберігаємо теми…';
+        status.textContent = 'Зберігаємо налаштування…';
         try {
             const response = await fetch(form.action, {
                 method: 'POST',
@@ -17,13 +17,15 @@
                 body: JSON.stringify({
                     rounds: rounds.valueAsNumber,
                     prompts: prompts.value.split(/\r\n?|\n/).map(prompt => prompt.trim()).filter(Boolean),
+                    time_limit: Number(form.elements.time_limit.value),
                 }),
             });
             const data = await response.json().catch(() => ({}));
             if (!response.ok) throw new Error(data.error || 'Не вдалося зберегти теми.');
             rounds.value = data.settings.rounds;
             prompts.value = data.settings.prompts.join('\n');
-            status.textContent = 'Теми збережено';
+            form.elements.time_limit.value = String(data.settings.time_limit);
+            status.textContent = 'Налаштування збережено';
         } catch (error) {
             status.textContent = error.message;
         } finally {
