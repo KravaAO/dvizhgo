@@ -10,6 +10,7 @@ from flask import (
     request, session, url_for
 )
 from flask_socketio import SocketIO, join_room as join_socket_room
+from quiz_app import drawing
 from quiz_app.bootstrap import app, socketio
 from quiz_app.config import settings
 from quiz_app.database import connect_database, initialize_database
@@ -261,6 +262,14 @@ def get_current_host_room():
     room = find_host_room(conn, session.get("host_room_id"), session.get("host_access_token"))
     conn.close()
     return room
+
+
+ROOM_MODES = ("quiz", "drawing")
+
+
+def selected_room_mode(room_settings):
+    mode = room_settings.get("room_mode")
+    return mode if mode in ROOM_MODES else "quiz"
 
 
 @socketio.on("connect")
@@ -538,30 +547,6 @@ def clear_room_runtime(conn, room_id):
     conn.execute("DELETE FROM students WHERE room_id = ?", (room_id,))
 
 
-def voting_joined(participant):
-    if not participant:
-        return False
-    try:
-        return json.loads(participant["metadata_json"] or "{}").get("voting_joined") is True
-    except (TypeError, ValueError, AttributeError):
-        return False
-
-
-@app.post("/api/voting/join")
-def join_voting():
-    conn = get_db()
-    participant = current_participant(conn)
-    if not participant:
-        conn.close()
-        return jsonify({"error": "Немає активної сесії."}), 401
-    metadata = json.loads(participant["metadata_json"] or "{}")
-    metadata["voting_joined"] = True
-    conn.execute("UPDATE room_participants SET metadata_json = ? WHERE id = ?", (json.dumps(metadata), participant["id"]))
-    conn.commit()
-    conn.close()
-    return jsonify({"ok": True})
-
-
 def serialize_roulette(conn, round_row, viewer_id=None):
     if not round_row:
         return None
@@ -599,10 +584,7 @@ def serialize_roulette(conn, round_row, viewer_id=None):
         ).fetchone()
         user_vote = vote["choice_participant_id"] if vote else None
 
-    viewer = conn.execute("SELECT metadata_json FROM room_participants WHERE id = ?", (viewer_id,)).fetchone() if viewer_id else None
-    joined_voting = voting_joined(viewer)
     return {
-        "voting_joined": joined_voting,
         "is_duelist": viewer_id in participant_ids if viewer_id else False,
         "id": round_row["id"],
         "question": round_row["question"],
@@ -622,7 +604,6 @@ def serialize_roulette(conn, round_row, viewer_id=None):
             viewer_id
             and round_row["status"] == "voting"
             and viewer_id not in participant_ids
-            and joined_voting
             and not user_vote
         ),
         "user_vote": user_vote,
@@ -746,6 +727,8 @@ def join_room():
 
     conn = get_db()
     room = get_room_by_code(conn, code)
+    if room:
+        room = conn.lock_room(room["id"])
     if not room or room["status"] == "finished":
         conn.close()
         return render_template("index.html", error="Кімнату не знайдено або її вже завершено."), 404
@@ -806,7 +789,46 @@ def host_lobby():
         return redirect(url_for("index"))
     if room["status"] != "lobby":
         return redirect(url_for("admin"))
-    return render_template("host_lobby.html", room=room)
+    room_settings = json.loads(room["settings_json"] or "{}")
+    conn = get_db()
+    try:
+        quiz_title = get_room_quiz_title(conn, room)
+    finally:
+        conn.close()
+    drawing_config = drawing.saved_settings(room_settings)
+    page = render_template(
+        "host_lobby.html", room=room, room_mode=selected_room_mode(room_settings),
+        quiz_title=quiz_title, drawing_config=drawing_config,
+        drawing_ready=drawing.settings_ready(drawing_config),
+    )
+    return page, 200, {"Cache-Control": "no-store"}
+
+
+@app.post("/api/lobby/room-mode")
+def save_room_mode():
+    host_room = get_current_host_room()
+    if not host_room:
+        return jsonify(error="Немає доступу."), 401
+    data = request.get_json(silent=True)
+    mode = data.get("room_mode") if isinstance(data, dict) else None
+    if mode not in ROOM_MODES:
+        return jsonify(error="Оберіть Квіз або Малювалку."), 400
+
+    conn = get_db()
+    try:
+        room = conn.lock_room(host_room["id"])
+        if room["status"] != "lobby" or get_runtime(conn, room["id"])["current_activity_id"]:
+            return jsonify(error="Змінити режим можна в лобі."), 409
+        room_settings = json.loads(room["settings_json"] or "{}")
+        room_settings["room_mode"] = mode
+        conn.execute(
+            "UPDATE rooms SET settings_json = ? WHERE id = ?",
+            (json.dumps(room_settings, ensure_ascii=False), room["id"]),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return jsonify(room_mode=mode)
 
 
 @app.get("/api/lobby")
@@ -849,6 +871,7 @@ def lobby_state():
     return jsonify({
         "status": room["status"], "participants": participant_payload,
         "mode": settings_json.get("mode", "self_paced"),
+        "room_mode": selected_room_mode(settings_json),
         "server_time": datetime.now().astimezone().isoformat(),
         "runtime_state": runtime["state"],
         "runtime_version": runtime["version"],
@@ -857,7 +880,6 @@ def lobby_state():
         "boosts": boosts,
         "boost_enabled": LOBBY_BOOST_ACTIVE,
         "viewer_id": participant["id"] if participant else None,
-        "voting_joined": voting_joined(participant),
     })
 
 
@@ -987,23 +1009,65 @@ def lobby_dvd_telemetry():
 
 
 @app.post("/api/lobby/start")
-def start_quiz():
-    room = get_current_host_room()
-    if not room:
-        return jsonify({"error": "Unauthorized"}), 401
+def start_lobby_activity():
     data = request.get_json(silent=True) or {}
-    mode = data.get("mode", "self_paced")
-    if mode not in {"self_paced", "live"}:
-        return jsonify({"error": "Невідомий режим кімнати."}), 400
+    if not isinstance(data, dict):
+        return jsonify(error="Некоректні параметри запуску."), 400
+    if "expected_room_mode" in data:
+        expected_mode = data["expected_room_mode"]
+        if expected_mode not in ROOM_MODES:
+            return jsonify(error="Невідомий режим кімнати."), 400
+        return start_room_activity(expected_mode=expected_mode)
+    if "mode" in data:
+        quiz_mode = data["mode"]
+        if quiz_mode not in ("self_paced", "live"):
+            return jsonify(error="Невідомий режим проходження квізу."), 400
+        return start_room_activity(room_mode="quiz", legacy_quiz_mode=quiz_mode)
+    return start_room_activity()
+
+
+def start_room_activity(*, room_mode=None, expected_mode=None, legacy_quiz_mode=None):
+    host_room = get_current_host_room()
+    if not host_room:
+        return jsonify(error="Немає доступу."), 401
     conn = get_db()
-    runtime = get_runtime(conn, room["id"])
-    if runtime["current_activity_id"]:
+    try:
+        room = conn.lock_room(host_room["id"])
+        room_id = room["id"]
+        if room["status"] != "lobby" or get_runtime(conn, room_id)["current_activity_id"]:
+            return jsonify(error="Спершу завершіть або скасуйте поточну активність."), 409
+        room_settings = json.loads(room["settings_json"] or "{}")
+        saved_mode = selected_room_mode(room_settings)
+        if expected_mode is not None and expected_mode != saved_mode:
+            return jsonify(error="Режим кімнати змінився. Перевірте вибір і запустіть ще раз.", room_mode=saved_mode), 409
+        activity_type = room_mode or saved_mode
+        try:
+            if activity_type == "drawing":
+                activity_id = drawing.create_activity(conn, room_id, room_settings)
+            else:
+                activity_id = create_quiz_activity(conn, room, legacy_quiz_mode or "self_paced")
+        except ValueError as error:
+            return jsonify(error=str(error)), 400
+        if legacy_quiz_mode is not None:
+            room_settings["mode"] = legacy_quiz_mode
+            conn.execute(
+                "UPDATE rooms SET settings_json = ? WHERE id = ?",
+                (json.dumps(room_settings, ensure_ascii=False), room_id),
+            )
+        set_runtime(conn, room_id, activity_id, "active")
+        conn.execute("UPDATE rooms SET status = 'active' WHERE id = ?", (room_id,))
+        conn.commit()
+    finally:
         conn.close()
-        return jsonify({"error": "Спершу завершіть або скасуйте поточну активність."}), 409
+    emit_room_state(room_id)
+    destination = "drawing.page" if activity_type == "drawing" else "admin"
+    return jsonify(ok=True, redirect_url=url_for(destination))
+
+
+def create_quiz_activity(conn, room, mode):
     questions = load_room_questions(conn, room["id"])
     if not questions:
-        conn.close()
-        return jsonify({"error": "Спочатку оберіть квіз із питаннями."}), 400
+        raise ValueError("Спочатку оберіть квіз із питаннями.")
     activity_id = conn.insert_and_get_id(
         """
         INSERT INTO activities (room_id, type, status, config_json, started_at)
@@ -1037,15 +1101,7 @@ def start_quiz():
             """,
             (activity_id, participant["id"], json.dumps(order), now_iso()),
         )
-    set_runtime(conn, room["id"], activity_id, "active")
-    conn.execute(
-        "UPDATE rooms SET status = 'active', settings_json = ? WHERE id = ?",
-        (json.dumps({**json.loads(room["settings_json"] or "{}"), "mode": mode}, ensure_ascii=False), room["id"]),
-    )
-    conn.commit()
-    conn.close()
-    emit_room_state(room["id"])
-    return jsonify({"ok": True})
+    return activity_id
 
 
 @app.get("/quiz")
@@ -1305,9 +1361,14 @@ def roulette_vote():
         return jsonify({"error": "No active session"}), 401
     participant_id = participant_session["id"]
     room_id = participant_session["room_id"]
+    conn.lock_room(room_id)
+    if not current_participant(conn):
+        conn.close()
+        return jsonify({"error": "No active session"}), 401
     touch_participant(conn, participant_id)
     round_row = get_open_duel(conn, room_id)
-    if not round_row or round_row["status"] != "voting":
+    runtime = get_runtime(conn, room_id)
+    if not round_row or round_row["status"] != "voting" or runtime["current_activity_id"] != round_row["activity_id"]:
         conn.close()
         return jsonify({"error": "Voting is not active"}), 409
 
@@ -1316,25 +1377,21 @@ def roulette_vote():
         (round_row["id"],),
     ).fetchall()
     participant_ids = {row["participant_id"] for row in participants}
-    if not voting_joined(participant_session) or participant_id in participant_ids or choice_student_id not in participant_ids:
+    if participant_id in participant_ids or choice_student_id not in participant_ids:
         conn.close()
         return jsonify({"error": "You cannot vote for this participant"}), 403
 
-    existing_vote = conn.execute(
-        "SELECT 1 FROM duel_votes WHERE round_id = ? AND voter_id = ?",
-        (round_row["id"], participant_id),
-    ).fetchone()
-    if existing_vote:
-        conn.close()
-        return jsonify({"error": "You have already liked an answer"}), 409
-
-    conn.execute(
+    vote = conn.execute(
         """
         INSERT INTO duel_votes (round_id, voter_id, choice_participant_id, created_at)
         VALUES (?, ?, ?, ?)
+        ON CONFLICT (round_id, voter_id) DO NOTHING
         """,
         (round_row["id"], participant_id, choice_student_id, now_iso()),
     )
+    if not vote.rowcount:
+        conn.close()
+        return jsonify({"error": "You have already liked an answer"}), 409
     conn.commit()
     payload = serialize_roulette(conn, round_row, participant_id)
     conn.close()
@@ -1474,8 +1531,9 @@ def leave_room():
     participant = current_participant(conn)
     room_id = participant["room_id"] if participant else None
     if participant:
+        conn.lock_room(room_id)
         conn.execute(
-            "UPDATE room_participants SET left_at = ? WHERE id = ? AND room_id = ?",
+            "UPDATE room_participants SET left_at = ? WHERE id = ? AND room_id = ? AND left_at IS NULL",
             (now_iso(), participant["id"], participant["room_id"]),
         )
         conn.commit()
@@ -1557,7 +1615,8 @@ def quizzes():
     room = get_current_host_room()
     if not room:
         return redirect(url_for("index"))
-    return render_template("quizzes.html", room=room)
+    room_mode = selected_room_mode(json.loads(room["settings_json"] or "{}"))
+    return render_template("quizzes.html", room=room, room_mode=room_mode)
 
 
 @app.get("/api/admin/quizzes")
@@ -1607,9 +1666,10 @@ def activate_quiz(quiz_id):
     if not room:
         return jsonify({"error": "Unauthorized"}), 401
     conn = get_db()
+    room = conn.lock_room(room["id"])
     runtime = get_runtime(conn, room["id"])
     quiz = conn.execute("SELECT id FROM quizzes WHERE id = ? AND room_id = ?", (quiz_id, room["id"])).fetchone()
-    if runtime["current_activity_id"]:
+    if room["status"] != "lobby" or runtime["current_activity_id"]:
         conn.close()
         return jsonify({"error": "Спершу очистіть результати кімнати, щоб змінити квіз."}), 409
     if not quiz:
@@ -1627,8 +1687,9 @@ def activate_default_quiz():
     if not room:
         return jsonify({"error": "Unauthorized"}), 401
     conn = get_db()
+    room = conn.lock_room(room["id"])
     runtime = get_runtime(conn, room["id"])
-    if runtime["current_activity_id"]:
+    if room["status"] != "lobby" or runtime["current_activity_id"]:
         conn.close()
         return jsonify({"error": "Спершу очистіть результати кімнати, щоб змінити квіз."}), 409
     conn.execute("UPDATE rooms SET active_quiz_id = NULL WHERE id = ?", (room["id"],))
@@ -1735,6 +1796,7 @@ def close_roulette():
         return jsonify({"error": "Unauthorized"}), 401
 
     conn = get_db()
+    conn.lock_room(room["id"])
     round_row = get_open_duel(conn, room["id"])
     if not round_row:
         conn.close()
@@ -2000,6 +2062,7 @@ def admin_reset():
         return jsonify({"error": "Unauthorized"}), 401
 
     conn = get_db()
+    conn.lock_room(room["id"])
     clear_room_runtime(conn, room["id"])
     conn.execute("UPDATE rooms SET status = 'lobby' WHERE id = ?", (room["id"],))
     conn.commit()
@@ -2016,6 +2079,7 @@ def admin_return_to_lobby():
         return jsonify({"error": "Unauthorized"}), 401
 
     conn = get_db()
+    conn.lock_room(room["id"])
     runtime = get_runtime(conn, room["id"])
     activity = get_activity(conn, runtime["current_activity_id"])
     if not activity or activity["type"] != "quiz" or activity["status"] != "active":
@@ -2051,6 +2115,7 @@ def admin_finish_room():
     if not room:
         return jsonify({"error": "Unauthorized"}), 401
     conn = get_db()
+    conn.lock_room(room["id"])
     clear_room_runtime(conn, room["id"])
     conn.execute("UPDATE room_participants SET left_at = COALESCE(left_at, ?) WHERE room_id = ?", (now_iso(), room["id"]))
     conn.execute("UPDATE rooms SET status = 'finished' WHERE id = ?", (room["id"],))
@@ -2065,5 +2130,4 @@ if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
 
 
-from quiz_app.drawing import bp as drawing_blueprint
-app.register_blueprint(drawing_blueprint)
+app.register_blueprint(drawing.bp)

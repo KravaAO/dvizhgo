@@ -1,6 +1,6 @@
 # DvizhGO: поточний цикл гри та правила переходів
 
-**Статус документа:** зафіксований фактичний стан станом на 2026-09-29.
+**Статус документа:** зафіксований фактичний стан станом на 2026-11-19.
 Це джерело правди для UI-текстів, тестів та подальшої роботи над state machine.
 
 ## Ключова модель
@@ -11,13 +11,16 @@ Room — довгоживуча live-сесія
 ├── Activity — один запуск формату в room
 │   ├── quiz
 │   ├── duel
-│   └── flash_question
+│   ├── flash_question
+│   └── drawing
 ├── QuizAttempt — одна спроба participant у конкретному quiz activity
 └── RoomRuntime — поточна активність і стан інтерфейсу room
 ```
 
-Room не дорівнює одному квізу. Після завершення квіза room може повернутися у
-стан очікування, зберегти учасників та запустити наступний квіз.
+Після завершення активності room повертається у стан очікування зі своїми
+учасниками. Ведучий обирає в лобі формат наступного запуску, «Квіз» або
+«Малювалка». Вибір зберігається в `rooms.settings_json.room_mode`. За
+відсутності цього ключа лобі показує «Квіз».
 
 ## Стан room та activity
 
@@ -70,13 +73,17 @@ Room не дорівнює одному квізу. Після завершен�
 | Дія UI | Коли доступна | Фактична дія | Що зберігається |
 |---|---|---|---|
 | Створити room | з головної | створює room у `lobby` | room, host access token |
+| Обрати режим кімнати | lobby, немає current activity | задає формат наступного запуску | `room_mode` |
 | Обрати квіз | у бібліотеці | встановлює `active_quiz_id` | бібліотека квізів |
-| Почати квіз | lobby, немає current activity | створює active quiz activity і attempts | snapshot питань, attempts |
+| Зберегти теми Малювалки | редактор тем, room у lobby | оновлює кількість раундів і теми для наступного запуску | `rooms.settings_json.drawing` |
+| Почати квіз | lobby, вибрано «Квіз» | створює active quiz activity і attempts | snapshot питань, attempts |
+| Почати Малювалку | lobby, вибрано «Малювалка» і збережено теми | створює active drawing activity і відкриває перший раунд | snapshot тем і кількості раундів |
 | ДВИЖ-ДУЕЛЬ | лише під час active quiz | quiz `paused`, duel `active` | quiz progress не втрачається |
 | Завершити ДВИЖ-ДУЕЛЬ | duel active | повертає paused quiz у `active` | відповіді дуелі й quiz progress |
 | Flash Question | лише під час active quiz | quiz `paused`, flash `active` | quiz progress не втрачається |
 | Завершити Flash | flash active або timeout | відновлює paused quiz | flash answers і quiz progress |
 | **Завершити квіз** | усі незалишені attempts finished | active quiz → `finished`; room → `lobby` | results, attempts, participant-и |
+| **Повернутися в лобі** у фіналі Малювалки | після останнього голосування | active drawing → `finished`; room → `lobby` | учасники, режим кімнати й посилання на роботи до закінчення їхнього строку |
 | Скинути room | host підтвердив дію | очищає runtime activities/attempts, room → `lobby` | participant-и й library квізів |
 | Завершити room | host підтвердив дію | room → `finished`, учасники → left | room/quiz library; runtime очищується |
 | Вийти (host logout) | будь-коли | очищає лише host browser session | уся room і runtime |
@@ -132,10 +139,20 @@ rooms.status = lobby
 | Join до старту | `/lobby` | presence, avatar, lobby boost |
 | Join під час active quiz | `/quiz` | отримує late-join attempt |
 | Join під час duel/flash | `/activity` | бачить current extra activity; отримує late quiz attempt для resume |
+| Join під час Малювалки | `/drawing` | потрапляє в поточний раунд або фінал |
 | Active quiz | `/quiz` | відповідає лише за свою attempt |
 | Duel або flash | `/activity` | quiz answer API повертає `409 activity_paused` |
 | Завершив quiz | `/result` → може повернутися у lobby | переглядає результат, очікує next activity |
 | Explicit leave | `/` | `left_at` встановлено, room не завершується |
+
+## Голосування
+
+Після відкриття голосування учасник кімнати одразу бачить дозволені варіанти
+на екрані активності. У Дуелі глядач може віддати один голос за одну з двох
+відповідей. Дуелянти не голосують. У Малювалці кожен учасник може віддати
+один голос за чужу роботу в поточному раунді, навіть якщо не надіслав свою.
+Автори робіт відкриваються у фіналі. Роботи доступні за посиланнями
+протягом семи днів після надсилання.
 
 ## Основні можливості current release
 

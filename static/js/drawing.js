@@ -55,14 +55,13 @@
             else renderCanvas(root);
         } else if (state.phase === 'voting') {
             root.append(el('p', 'Роботи анонімні до кінця гри. Можна віддати один голос за чужий малюнок.'));
-            if (!isHost && !state.voting_joined) root.append(button('Приєднатися до голосування', () => update('/api/voting/join')));
             if (state.voted) root.append(el('p', 'Ваш голос зараховано ✓'));
             const grid = el('div', undefined, 'drawing-gallery');
             state.drawings.forEach((work, i) => {
                 const card = el('article', undefined, 'drawing-card'); const img = document.createElement('img'); img.src = work.url; img.alt = `Робота ${i+1}`;
                 card.append(img, el('strong', `Робота ${i+1}`));
                 if (work.own) card.append(el('span', 'Ваша робота'));
-                else if (!isHost && state.voting_joined && !state.voted) card.append(button('Обрати цю роботу', () => update('/api/drawing/vote', {round:state.round, drawing_id:work.id})));
+                else if (state.can_vote) card.append(button('Голосувати за роботу', () => update('/api/drawing/vote', {round:state.round, drawing_id:work.id})));
                 grid.append(card);
             });
             if (!state.drawings.length) grid.append(el('p', 'У цьому раунді немає надісланих робіт.'));

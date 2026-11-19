@@ -8,11 +8,11 @@
     <script src="{{ url_for('static', filename='js/leave-modal.js') }}"></script>
 </head>
 <body class="lobby-page dv-lobby dv-lobby-page" data-host="true">
-<div class="dv-lobby-layout">
+<div class="dv-lobby-layout dv-host-lobby-layout">
     <header class="dv-lobby-header">
         <div class="dv-logo"><img class="dv-brand-image" src="{{ url_for('static', filename='images/gologo.png') }}" alt="DvizhGO"></div>
         <div class="dv-lobby-state">● ЛОБІ / КВАДРАТИ АКТИВНІ</div>
-        <div class="dv-lobby-tools"><button id="copyRoomCode" class="dv-icon" title="Копіювати код">↗</button><button id="openRoomSettings" class="dv-icon" title="Налаштування">⚙</button><form action="{{ url_for('admin_logout') }}" method="post" data-confirm-leave><button class="dv-icon" title="Вийти" type="submit">×</button></form></div>
+        <div class="dv-lobby-tools"><button id="copyRoomCode" class="dv-icon" title="Копіювати код">↗</button><form action="{{ url_for('admin_logout') }}" method="post" data-confirm-leave><button class="dv-icon" title="Вийти" type="submit">×</button></form></div>
     </header>
     <main class="dv-lobby-main">
         <aside class="dv-room-panel">
@@ -24,28 +24,33 @@
             <div class="dv-arena-wrap"><div id="dvdAvatars" class="dvd-stage dv-arena"><div class="dv-arena-label">SQUARE LOBBY / AVATAR READY</div><div class="dv-dvd-disabled"><strong>DVD-СЦЕНУ ПРИХОВАНО</strong><span>Вона з’явиться на ширшому екрані</span></div></div><div class="dv-peek" aria-hidden="true">😎</div></div>
         </section>
     </main>
-    <footer class="dv-lobby-footer"><span>Очікуємо учасників · {{ room.title }}</span><button id="startQuiz" class="dv-start" type="button">Почати — дати завдання →</button></footer>
+    <footer class="dv-lobby-footer dv-host-lobby-controls" id="roomControls" data-mode="{{ room_mode }}" data-save-url="{{ url_for('save_room_mode') }}">
+        <fieldset id="roomModes" class="dv-room-modes">
+            <legend>Режим кімнати</legend>
+            <div class="dv-room-mode-options">
+                <label><input type="radio" name="room_mode" value="quiz" {% if room_mode == 'quiz' %}checked{% endif %}><span>Квіз</span></label>
+                <label><input type="radio" name="room_mode" value="drawing" {% if room_mode == 'drawing' %}checked{% endif %}><span>Малювалка</span></label>
+            </div>
+        </fieldset>
+        <div class="dv-room-configuration">
+            <div data-room-config="quiz" {% if room_mode != 'quiz' %}hidden{% endif %}>
+                <strong>{{ quiz_title }}</strong>
+                <a href="{{ url_for('quizzes') }}">Обрати або редагувати квіз →</a>
+            </div>
+            <div data-room-config="drawing" data-ready="{{ drawing_ready|tojson }}" {% if room_mode != 'drawing' %}hidden{% endif %}>
+                <strong>Раундів · {{ drawing_config.rounds }} / Тем · {{ drawing_config.prompts|length }}</strong>
+                <a href="{{ url_for('drawing.editor') }}">{% if drawing_ready %}Редагувати теми{% else %}Додати теми для раундів{% endif %} →</a>
+            </div>
+            <span id="roomModeStatus" role="status" class="dv-room-mode-status"></span>
+        </div>
+        <button id="startRoom" class="dv-start" type="button" data-start-url="{{ url_for('start_lobby_activity') }}" {% if room_mode == 'drawing' and not drawing_ready %}disabled{% endif %}>{{ 'Почати Малювалку' if room_mode == 'drawing' else 'Почати квіз' }}</button>
+    </footer>
 </div>
-<aside id="roomSettingsDrawer" class="dv-drawer" aria-hidden="true">
-    <div class="dv-drawer-head"><span class="dv-micro">НАЛАШТУВАННЯ КІМНАТИ</span><button id="closeRoomSettings" class="dv-icon">×</button></div>
-    <h2>Налаштування<br>кімнати</h2>
-    <label>Гра<select id="gameType"><option value="quiz">Квіз</option><option value="drawing">Малювалка</option></select></label>
-    <div id="drawingSettings" hidden>
-        <label>Кількість раундів <input id="drawingRounds" type="number" min="1" max="30" value="3"></label>
-        <label>Теми для малювання — по одній на рядок <textarea id="drawingPrompts" rows="6" maxlength="6029" placeholder="Космічний кіт&#10;Місто майбутнього&#10;Веселий дракон"></textarea></label>
-        <button id="saveDrawingSettings" type="button" class="dv-copy">Зберегти теми</button>
-        <p class="dv-drawer-note">Для кожного раунду потрібна окрема тема. Ведучий керує етапами гри.</p>
-    </div>
-    <label>Режим проходження<select id="roomMode" data-custom-select><option value="self_paced">Самостійно</option><option value="live">Live</option></select></label>
-    <a class="dv-drawer-link" href="{{ url_for('quizzes') }}">Редагувати / обрати квіз →</a>
-    <p class="dv-drawer-note">Спершу підготуйте квіз. Після «Почати» всі учасники в лобі перейдуть до завдань.</p>
-    <button class="dv-disabled-control" disabled>Активності / soon</button><button class="dv-disabled-control" disabled>Редагування кімнати / soon</button>
-</aside>
 <script>
 document.querySelectorAll('#copyRoomCode,#copyRoomCodeWide').forEach(button => button.addEventListener('click', async () => { try { await navigator.clipboard.writeText('{{ room.code }}'); showToast('Код кімнати скопійовано.', {type:'success'}); } catch { showToast('Не вдалося скопіювати код.', {type:'error'}); }}));
-const drawer=document.getElementById('roomSettingsDrawer'); document.getElementById('openRoomSettings').onclick=()=>drawer.classList.add('open'); document.getElementById('closeRoomSettings').onclick=()=>drawer.classList.remove('open');
 </script>
-<script src="{{ url_for('static', filename='js/select.js') }}"></script>
+<script src="{{ url_for('static', filename='js/room-start.js') }}"></script>
+<script src="{{ url_for('static', filename='js/room-mode.js') }}"></script>
 <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
 <script src="{{ url_for('static', filename='js/room-socket.js') }}"></script>
 <script src="{{ url_for('static', filename='js/lobby.js') }}"></script>

@@ -43,6 +43,15 @@ class DatabaseConnection:
     def close(self):
         self._connection.close()
 
+    def lock_room(self, room_id: int):
+        """Read the room while serializing changes to its settings and runtime."""
+        query = "SELECT * FROM rooms WHERE id = ?"
+        if is_postgres(self._database_url):
+            query += " FOR NO KEY UPDATE"
+        else:
+            self.execute("BEGIN IMMEDIATE")
+        return self.execute(query, (room_id,)).fetchone()
+
     def insert_and_get_id(self, query: str, params: Iterable[Any]) -> int:
         if is_postgres(self._database_url):
             cursor = self.execute(f"{query.rstrip()} RETURNING id", params)

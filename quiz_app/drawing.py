@@ -54,10 +54,12 @@ def identity(conn):
 def current(conn, room_id):
     runtime = get_runtime(conn, room_id)
     activity = get_activity(conn, runtime["current_activity_id"])
-    return activity if activity and activity["type"] == "drawing" else None
+    return activity if activity and activity["type"] == "drawing" and activity["status"] == "active" else None
 
 
 def validated_settings(data):
+    if not isinstance(data, dict):
+        raise ValueError("Некоректні налаштування Малювалки.")
     prompts = data.get("prompts")
     rounds = data.get("rounds", 3)
     if not isinstance(prompts, list) or not all(isinstance(p, str) and 0 < len(p.strip()) <= 200 for p in prompts):
@@ -69,52 +71,67 @@ def validated_settings(data):
     return {"prompts": [p.strip() for p in prompts], "rounds": rounds}
 
 
-@bp.route('/api/drawing/settings', methods=['GET', 'POST'])
-def settings_route():
+def saved_settings(room_settings):
+    return room_settings.get("drawing", {"rounds": 3, "prompts": []})
+
+
+def settings_ready(config):
+    try:
+        validated_settings(config)
+    except ValueError:
+        return False
+    return True
+
+
+@bp.get('/admin/drawing')
+def editor():
     room = api().get_current_host_room()
     if not room:
+        return redirect(url_for('index'))
+    if room['status'] != 'lobby':
+        return redirect(url_for('admin'))
+    config = saved_settings(json.loads(room['settings_json'] or '{}'))
+    return render_template('drawing_settings.html', room=room, config=config)
+
+
+@bp.route('/api/drawing/settings', methods=['GET', 'POST'])
+def settings_route():
+    host_room = api().get_current_host_room()
+    if not host_room:
         return jsonify(error="Немає доступу."), 401
+    if request.method == 'GET':
+        return jsonify(settings=saved_settings(json.loads(host_room['settings_json'] or '{}')))
+
+    try:
+        config = validated_settings(request.get_json(silent=True))
+    except ValueError as error:
+        return jsonify(error=str(error)), 400
     conn = api().get_db()
-    room = conn.execute('SELECT * FROM rooms WHERE id = ?', (room['id'],)).fetchone()
-    settings = json.loads(room['settings_json'] or '{}')
-    if request.method == 'POST':
-        if room['status'] != 'lobby':
-            conn.close()
+    try:
+        room = conn.lock_room(host_room['id'])
+        if room['status'] != 'lobby' or get_runtime(conn, room['id'])['current_activity_id']:
             return jsonify(error="Налаштування доступні в лобі."), 409
-        try:
-            settings['drawing'] = validated_settings(request.get_json(silent=True) or {})
-        except ValueError as error:
-            conn.close()
-            return jsonify(error=str(error)), 400
+        settings = json.loads(room['settings_json'] or '{}')
+        settings['drawing'] = config
         conn.execute('UPDATE rooms SET settings_json = ? WHERE id = ?', (json.dumps(settings, ensure_ascii=False), room['id']))
         conn.commit()
-    conn.close()
-    return jsonify(settings=settings.get('drawing', {'rounds': 3, 'prompts': []}))
+    finally:
+        conn.close()
+    return jsonify(settings=config)
 
 
 @bp.post('/api/drawing/start')
 def start():
-    room = api().get_current_host_room()
-    if not room:
-        return jsonify(error="Немає доступу."), 401
-    conn = api().get_db()
-    room = conn.execute('SELECT * FROM rooms WHERE id = ?', (room['id'],)).fetchone()
-    if room['status'] != 'lobby' or get_runtime(conn, room['id'])['current_activity_id']:
-        conn.close()
-        return jsonify(error="Спершу завершіть поточну активність."), 409
-    try:
-        config = validated_settings(json.loads(room['settings_json'] or '{}').get('drawing', {}))
-    except ValueError as error:
-        conn.close()
-        return jsonify(error=str(error)), 400
+    return api().start_room_activity(room_mode='drawing')
+
+
+def create_activity(conn, room_id, room_settings):
+    config = validated_settings(saved_settings(room_settings))
     config.update(round=1, phase='drawing')
-    activity_id = conn.insert_and_get_id("INSERT INTO activities (room_id, type, status, config_json, started_at) VALUES (?, 'drawing', 'active', ?, ?)", (room['id'], json.dumps(config, ensure_ascii=False), now_iso()))
-    set_runtime(conn, room['id'], activity_id, 'active')
-    conn.execute("UPDATE rooms SET status = 'active' WHERE id = ?", (room['id'],))
-    conn.commit()
-    conn.close()
-    api().emit_room_state(room['id'])
-    return jsonify(ok=True)
+    return conn.insert_and_get_id(
+        "INSERT INTO activities (room_id, type, status, config_json, started_at) VALUES (?, 'drawing', 'active', ?, ?)",
+        (room_id, json.dumps(config, ensure_ascii=False), now_iso()),
+    )
 
 
 @bp.get('/drawing')
@@ -131,15 +148,21 @@ def page():
 
 def state(conn, activity, participant, is_host):
     config = json.loads(activity['config_json'])
-    rows = conn.execute('SELECT * FROM drawings WHERE activity_id = ? AND expires_at > ? ORDER BY round_number, share_token', (activity['id'], now_iso())).fetchall()
+    rows = conn.execute(
+        '''SELECT id, participant_id, round_number, share_token, author, prompt, expires_at
+           FROM drawings WHERE activity_id = ? AND expires_at > ? ORDER BY round_number, share_token''',
+        (activity['id'], now_iso()),
+    ).fetchall()
     number, phase = config['round'], config['phase']
+    voter_id = participant['id'] if participant and not is_host else None
     result = {'round': number, 'rounds': config['rounds'], 'phase': phase,
               'prompt': config['prompts'][number - 1], 'is_host': is_host,
-              'voting_joined': api().voting_joined(participant), 'submitted': bool(participant and any(r['round_number'] == number and r['participant_id'] == participant['id'] for r in rows))}
+              'submitted': any(r['round_number'] == number and r['participant_id'] == voter_id for r in rows)}
     if phase == 'voting':
-        vote = conn.execute('SELECT drawing_id FROM drawing_votes WHERE activity_id = ? AND round_number = ? AND voter_id = ?', (activity['id'], number, participant['id'] if participant else -1)).fetchone()
+        vote = conn.execute('SELECT drawing_id FROM drawing_votes WHERE activity_id = ? AND round_number = ? AND voter_id = ?', (activity['id'], number, voter_id)).fetchone()
         result['voted'] = bool(vote)
-        result['drawings'] = [{'id': row['id'], 'url': url_for('drawing.image', token=row['share_token']), 'own': bool(participant and row['participant_id'] == participant['id'])} for row in rows if row['round_number'] == number]
+        result['drawings'] = [{'id': row['id'], 'url': url_for('drawing.image', token=row['share_token']), 'own': row['participant_id'] == voter_id} for row in rows if row['round_number'] == number]
+        result['can_vote'] = bool(voter_id and not vote and any(not work['own'] for work in result['drawings']))
     elif phase == 'results':
         counts = conn.execute('SELECT drawing_id, COUNT(*) AS n FROM drawing_votes WHERE activity_id = ? GROUP BY drawing_id', (activity['id'],)).fetchall()
         votes = {r['drawing_id']: r['n'] for r in counts}
@@ -184,6 +207,8 @@ def submit():
         return jsonify(error='Невірний формат малюнка.'), 400
     conn = api().get_db()
     participant, _ = identity(conn)
+    if participant:
+        conn.lock_room(participant['room_id'])
     activity = current(conn, participant['room_id']) if participant else None
     if not activity:
         conn.close()
@@ -206,29 +231,42 @@ def submit():
 
 @bp.post('/api/drawing/vote')
 def vote():
-    data = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True)
+    drawing_id = data.get('drawing_id') if isinstance(data, dict) else None
+    if type(drawing_id) is not int or not 0 < drawing_id < 2**63:
+        return jsonify(error='Оберіть роботу для голосування.'), 400
     conn = api().get_db()
-    participant, _ = identity(conn)
-    activity = current(conn, participant['room_id']) if participant else None
-    if not activity or not api().voting_joined(participant):
+    try:
+        participant, host = identity(conn)
+        if not participant or host:
+            return jsonify(error='Голосувати можуть учасники кімнати.'), 401
+        room_id = participant['room_id']
+        conn.lock_room(room_id)
+        if not api().current_participant(conn):
+            return jsonify(error='Немає активної сесії.'), 401
+        activity = current(conn, room_id)
+        if not activity:
+            return jsonify(error='Голосування не активне.'), 409
+        config = json.loads(activity['config_json'])
+        if config['phase'] != 'voting' or data.get('round') != config['round']:
+            return jsonify(error='Голосування не активне.'), 409
+        work = conn.execute(
+            'SELECT id, participant_id FROM drawings WHERE id = ? AND activity_id = ? AND round_number = ? AND expires_at > ?',
+            (drawing_id, activity['id'], config['round'], now_iso()),
+        ).fetchone()
+        if not work or work['participant_id'] == participant['id']:
+            return jsonify(error='Не можна голосувати за цю роботу.'), 403
+        vote = conn.execute(
+            '''INSERT INTO drawing_votes (activity_id, round_number, voter_id, drawing_id) VALUES (?, ?, ?, ?)
+               ON CONFLICT (activity_id, round_number, voter_id) DO NOTHING''',
+            (activity['id'], config['round'], participant['id'], work['id']),
+        )
+        if not vote.rowcount:
+            return jsonify(error='Ваш голос уже зараховано.'), 409
+        conn.commit()
+    finally:
         conn.close()
-        return jsonify(error='Спершу приєднайтеся до голосування.'), 403
-    config = json.loads(activity['config_json'])
-    if config['phase'] != 'voting' or data.get('round') != config['round']:
-        conn.close()
-        return jsonify(error='Голосування не активне.'), 409
-    work = conn.execute('SELECT * FROM drawings WHERE id = ? AND activity_id = ? AND round_number = ? AND expires_at > ?', (data.get('drawing_id'), activity['id'], config['round'], now_iso())).fetchone()
-    if not work or work['participant_id'] == participant['id']:
-        conn.close()
-        return jsonify(error='Не можна голосувати за цю роботу.'), 403
-    existing = conn.execute('SELECT 1 FROM drawing_votes WHERE activity_id = ? AND round_number = ? AND voter_id = ?', (activity['id'], config['round'], participant['id'])).fetchone()
-    if existing:
-        conn.close()
-        return jsonify(error='Ваш голос уже зараховано.'), 409
-    conn.execute('INSERT INTO drawing_votes (activity_id, round_number, voter_id, drawing_id) VALUES (?, ?, ?, ?)', (activity['id'], config['round'], participant['id'], work['id']))
-    conn.commit()
-    conn.close()
-    api().emit_room_event(participant['room_id'], 'room:drawing_updated')
+    api().emit_room_event(room_id, 'room:drawing_updated')
     return jsonify(ok=True)
 
 
@@ -238,6 +276,7 @@ def advance():
     if not host:
         return jsonify(error='Немає доступу.'), 401
     conn = api().get_db()
+    conn.lock_room(host['id'])
     activity = current(conn, host['id'])
     if not activity:
         conn.close()
