@@ -1429,13 +1429,20 @@ th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spa
 .draw-board.is-disabled .draw-frame { cursor:not-allowed; }
 .draw-palette { box-sizing:border-box; width:150px; display:flex; flex-direction:column; gap:12px; padding:14px; border-left:2px solid var(--ink); background:var(--chalk); overflow-y:auto; }
 .draw-label { font:900 10px/1 "Courier New",monospace; letter-spacing:.1em; text-transform:uppercase; }
-.draw-current { height:34px; border:2px solid var(--ink); background:linear-gradient(45deg,#ddd 25%,transparent 25%,transparent 75%,#ddd 75%),linear-gradient(45deg,#ddd 25%,#fff 25%,#fff 75%,#ddd 75%); background-size:12px 12px; background-position:0 0,6px 6px; position:relative; }
-.draw-current::after { content:''; position:absolute; inset:0; background:var(--current,#171714); opacity:var(--current-opacity,1); }
 .draw-swatches { display:grid; grid-template-columns:repeat(3,34px); gap:6px; }
 .draw-swatch { box-sizing:border-box; width:34px; height:34px; padding:0; border:2px solid var(--ink); background:var(--swatch); cursor:pointer; }
 .draw-swatch[aria-pressed="true"] { box-shadow:0 0 0 3px var(--chalk),0 0 0 6px var(--ink); }
-.draw-custom { display:flex; align-items:center; gap:8px; font:900 10px/1.2 "Courier New",monospace; letter-spacing:.06em; text-transform:uppercase; cursor:pointer; }
-.draw-custom input { width:34px; height:34px; padding:0; border:2px solid var(--ink); background:none; cursor:pointer; }
+.draw-custom { display:block; width:34px; height:34px; cursor:pointer; }
+.draw-custom input { box-sizing:border-box; display:block; width:34px; height:34px; padding:0; border:2px solid var(--ink); background:conic-gradient(#e63946,#ffd23f,#2a9d4b,#1d4ed8,#6d28d9,#e63946); cursor:pointer; }
+.draw-custom input::-webkit-color-swatch-wrapper { padding:0; }
+.draw-custom input::-webkit-color-swatch { border:0; }
+.draw-custom:not(.active) input::-webkit-color-swatch { opacity:0; }
+.draw-custom:not(.active) input::-moz-color-swatch { opacity:0; }
+.draw-sizes { display:grid; grid-template-columns:repeat(3,34px); gap:6px; }
+.draw-sizes .draw-tool-btn { width:34px; height:34px; }
+.draw-size-label { margin-top:4px; }
+.draw-frame[data-tool="fill"] { cursor:cell; }
+.draw-tool-btn:disabled[aria-pressed="true"] { background:#fff; color:var(--ink); box-shadow:none; }
 .draw-custom.active input { box-shadow:0 0 0 3px var(--chalk),0 0 0 6px var(--ink); }
 .draw-opacity { display:grid; gap:8px; }
 .draw-opacity output { color:var(--signal); }
@@ -1448,13 +1455,23 @@ th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spa
     .draw-submit { padding:10px 12px; font-size:13px; }
     .draw-board { min-height:0; grid-template-columns:minmax(0,1fr); grid-template-rows:minmax(280px,1fr) auto auto; }
     .draw-stage { order:1; padding:10px; }
-    .draw-toolbar { order:2; flex-direction:row; flex-wrap:wrap; justify-content:center; gap:8px 10px; padding:8px 10px; border-right:0; border-top:2px solid var(--ink); overflow:visible; }
-    .draw-group { display:flex; flex:none; gap:5px; padding:0 10px 0 0; border-bottom:0; border-right:2px solid var(--ink); }
-    .draw-group:last-child { border-right:0; }
-    .draw-tool-btn { width:40px; height:40px; }
+    .draw-toolbar { order:2; display:grid; grid-template-columns:repeat(auto-fill,38px); justify-content:center; gap:5px; padding:8px 10px; border-right:0; border-top:2px solid var(--ink); overflow:visible; }
+    .draw-group { display:contents; }
+    .draw-tool-btn { width:38px; height:38px; }
+    .draw-tool-btn svg { width:20px; height:20px; }
     .draw-palette { order:3; width:auto; display:grid; grid-template-columns:auto minmax(0,1fr); align-items:center; gap:8px 14px; padding:8px 10px 10px; border-left:0; border-top:2px solid var(--ink); overflow:visible; }
-    .draw-palette > .draw-label,.draw-current,.draw-custom span { display:none; }
-    .draw-swatches { grid-column:1/-1; grid-template-columns:repeat(9,30px); justify-content:space-between; gap:5px; }
-    .draw-swatch,.draw-custom input { width:30px; height:30px; }
+    .draw-palette > .draw-label { display:none; }
+    .draw-swatches { grid-column:1/-1; grid-template-columns:repeat(10,minmax(0,32px)); justify-content:space-between; gap:4px; }
+    .draw-swatch,.draw-custom,.draw-custom input { width:100%; height:auto; aspect-ratio:1/1; }
+    .draw-sizes { display:flex; gap:5px; }
+    .draw-sizes .draw-tool-btn { width:36px; height:36px; }
     .draw-opacity { grid-template-columns:auto minmax(0,1fr); align-items:center; gap:10px; }
+}
+@media (max-width:600px) {
+    .drawing-page { --dh:48px; }
+    .drawing-header strong { font-size:16px; }
+    .draw-topbar { padding:8px 12px; }
+    .draw-palette { padding:8px 10px; }
+    .draw-opacity-name { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+    .draw-sizes .draw-tool-btn { width:34px; height:34px; }
 }
