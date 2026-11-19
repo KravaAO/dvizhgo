@@ -3,5 +3,5 @@
 <body class="drawing-page" data-host="{{ 'true' if is_host else 'false' }}">
 <header class="drawing-header"><a href="/">DvizhGO</a><strong>МАЛЮВАЛКА ✎</strong><span id="drawingProgress">Завантаження…</span></header>
 <main class="drawing-main"><div id="drawingContent" aria-live="polite"></div></main>
-<script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script><script src="{{ url_for('static', filename='js/room-socket.js') }}"></script><script src="{{ url_for('static', filename='js/drawing.js') }}"></script>
+<script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script><script src="{{ url_for('static', filename='js/room-socket.js') }}"></script><script src="{{ url_for('static', filename='js/drawing-board.js') }}"></script><script src="{{ url_for('static', filename='js/drawing.js') }}"></script>
 </body></html>
