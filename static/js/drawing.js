@@ -5,7 +5,7 @@
     const isHost = document.body.dataset.host === 'true';
     // Values that change on every poll; they update in place instead of
     // rebuilding the screen.
-    const LIVE_FIELDS = ['time_left_ms'];
+    const LIVE_FIELDS = ['time_left_ms', 'submitted_count', 'expected_count'];
     let lastKey = '', state = null;
     // The board survives re-renders of the same round, so polling or socket
     // updates never wipe a picture that is still being drawn.
@@ -40,6 +40,7 @@
             deadlineAt = typeof next.time_left_ms === 'number' ? performance.now() + next.time_left_ms : null;
             const key = renderKey(next);
             if (key !== lastKey) { lastKey = key; render(); }
+            updateProgress();
             tick();
         } catch (error) { console.error(error); }
     }
@@ -50,6 +51,66 @@
         board.destroy();
         board = null;
         boardRound = null;
+    }
+
+    function progressBlock() {
+        const block = el('div', undefined, 'drawing-progress');
+        const count = el('strong');
+        count.dataset.live = 'submitted';
+        const total = el('span');
+        total.dataset.live = 'expected';
+        const bar = el('div', undefined, 'drawing-progress-bar');
+        const fill = el('i');
+        fill.dataset.live = 'bar';
+        bar.append(fill);
+        block.append(count, total, bar);
+        return block;
+    }
+
+    function updateProgress() {
+        if (!state || state.phase !== 'drawing' || typeof state.expected_count !== 'number') return;
+        const expected = Math.max(state.expected_count, state.submitted_count);
+        root.querySelectorAll('[data-live="submitted"]').forEach(node => { node.textContent = state.submitted_count; });
+        root.querySelectorAll('[data-live="expected"]').forEach(node => { node.textContent = `/ ${expected} надіслали`; });
+        root.querySelectorAll('[data-live="bar"]').forEach(node => { node.style.width = `${expected ? state.submitted_count / expected * 100 : 0}%`; });
+    }
+
+    function confirmDialog({title, text, confirmLabel, cancelLabel = 'Скасувати'}) {
+        return new Promise(resolve => {
+            const backdrop = el('div', undefined, 'leave-modal-backdrop open');
+            const dialog = el('section', undefined, 'leave-modal');
+            dialog.setAttribute('role', 'dialog');
+            dialog.setAttribute('aria-modal', 'true');
+            dialog.setAttribute('aria-labelledby', 'drawingConfirmTitle');
+            const heading = el('h2', title);
+            heading.id = 'drawingConfirmTitle';
+            const actions = el('div');
+            const cancel = el('button', cancelLabel, 'leave-cancel'); cancel.type = 'button';
+            const accept = el('button', confirmLabel, 'leave-confirm'); accept.type = 'button';
+            actions.append(cancel, accept);
+            dialog.append(el('div', 'ПІДТВЕРДЖЕННЯ', 'dv-micro'), heading, el('p', text), actions);
+            backdrop.append(dialog);
+            document.body.append(backdrop);
+            const close = result => { document.removeEventListener('keydown', onKey); backdrop.remove(); resolve(result); };
+            const onKey = event => { if (event.key === 'Escape') close(false); };
+            document.addEventListener('keydown', onKey);
+            cancel.onclick = () => close(false);
+            accept.onclick = () => close(true);
+            backdrop.onclick = event => { if (event.target === backdrop) close(false); };
+            cancel.focus();
+        });
+    }
+
+    async function endDrawingEarly() {
+        const missing = Math.max(0, state.expected_count - state.submitted_count);
+        const confirmed = await confirmDialog({
+            title: 'Завершити малювання?',
+            text: missing
+                ? `Ще малюють: ${missing}. Їхні роботи не потраплять у голосування цього раунду.`
+                : 'Голосування відкриється одразу.',
+            confirmLabel: 'Відкрити голосування',
+        });
+        if (confirmed) await update('/api/drawing/advance', {round:state.round, phase:'drawing'});
     }
 
     function formatTime(ms) {
@@ -124,9 +185,10 @@
         content.append(el('div', state.phase === 'results' ? 'ФІНАЛ' : `РАУНД ${state.round}`, 'drawing-eyebrow'));
         content.append(el('h1', state.phase === 'results' ? 'Ось наші переможці!' : state.prompt));
         if (state.phase === 'drawing') {
-            if (isHost) content.append(el('p', 'Учасники малюють. Коли всі будуть готові, відкрийте голосування.'));
-            else if (state.submitted) content.append(el('p', 'Ваш малюнок надіслано! Очікуємо голосування.'));
-            else content.append(el('p', 'Час вийшов. Очікуємо голосування.'));
+            if (isHost) content.append(el('p', 'Голосування відкриється само, щойно всі надішлють малюнки або вийде час.'));
+            else if (state.submitted) content.append(el('p', 'Ваш малюнок надіслано ✓ Голосування почнеться, коли всі закінчать.'));
+            else content.append(el('p', 'Час вийшов. Голосування почнеться, коли всі закінчать.'));
+            content.append(progressBlock());
         } else if (state.phase === 'voting') {
             content.append(el('p', 'Роботи анонімні до кінця гри. Можна віддати один голос за чужий малюнок.'));
             if (state.voted) content.append(el('p', 'Ваш голос зараховано ✓'));
@@ -153,10 +215,13 @@
             });
             content.append(grid);
         }
-        if (isHost) {
-            const text = state.phase === 'drawing' ? 'Відкрити голосування' : state.phase === 'voting' ? (state.round === state.rounds ? 'Показати результати' : 'Наступний раунд') : 'Повернутися в лобі';
+        if (isHost && state.phase === 'drawing') {
+            content.append(button('Завершити малювання зараз', endDrawingEarly, 'drawing-tool drawing-host-action'));
+        } else if (isHost) {
+            const text = state.phase === 'voting' ? (state.round === state.rounds ? 'Показати результати' : 'Наступний раунд') : 'Повернутися в лобі';
             content.append(button(text, () => update('/api/drawing/advance', {round:state.round, phase:state.phase}), 'drawing-button drawing-host-action'));
         }
+        updateProgress();
     }
     connectRoomSocket({drawing:refresh, state(s) { if (s.activity_type !== 'drawing') window.location.href = '/lobby'; }});
     refresh(); setInterval(refresh, 5000); setInterval(tick, 250);

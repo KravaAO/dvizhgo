@@ -126,6 +126,60 @@ class DrawingGameTest(unittest.TestCase):
         self.assertEqual(host.post('/api/drawing/advance', json={'round': 1, 'phase': 'voting'}).status_code, 200)
         self.assertTrue(25000 < a.get('/api/drawing/current').get_json()['time_left_ms'] <= 30000)
 
+    def phase(self):
+        conn = server.get_db()
+        row = conn.execute("SELECT config_json FROM activities WHERE type = 'drawing' AND status = 'active'").fetchone()
+        conn.close()
+        return json.loads(row['config_json'])['phase']
+
+    def start_drawing(self, rounds=2):
+        prompts = ['one', 'two', 'three'][:rounds]
+        self.assertEqual(self.host.post('/api/drawing/settings', json={'rounds': rounds, 'prompts': prompts, 'time_limit': 60}).status_code, 200)
+        self.assertEqual(self.host.post('/api/drawing/start').status_code, 200)
+
+    def test_voting_opens_only_after_every_online_player_submitted(self):
+        self.start_drawing()
+        a, b, c = self.players
+        a.post('/api/drawing/submit', json={'round': 1, 'image': PNG})
+        state = self.host.get('/api/drawing/current').get_json()
+        self.assertEqual((state['phase'], state['submitted_count'], state['expected_count']), ('drawing', 1, 3))
+        b.post('/api/drawing/submit', json={'round': 1, 'image': PNG})
+        self.assertEqual(self.phase(), 'drawing')
+        # Voting is refused while pictures are still missing.
+        self.assertEqual(a.post('/api/drawing/vote', json={'round': 1, 'drawing_id': 1}).status_code, 409)
+        # The last picture opens voting without any host action.
+        self.assertEqual(c.post('/api/drawing/submit', json={'round': 1, 'image': PNG}).status_code, 200)
+        self.assertEqual(self.phase(), 'voting')
+        state = c.get('/api/drawing/current').get_json()
+        self.assertEqual(len(state['drawings']), 3)
+        self.assertTrue(state['can_vote'])
+
+    def test_offline_players_do_not_block_voting(self):
+        self.start_drawing()
+        a, b, c = self.players
+        conn = server.get_db()
+        stale = (datetime.now() - timedelta(seconds=drawing.PRESENCE_WINDOW_SECONDS + 5)).isoformat(timespec='seconds')
+        conn.execute("UPDATE room_participants SET last_seen_at = ? WHERE display_name = 'Player 2'", (stale,))
+        conn.commit(); conn.close()
+        a.post('/api/drawing/submit', json={'round': 1, 'image': PNG})
+        self.assertEqual(b.post('/api/drawing/submit', json={'round': 1, 'image': PNG}).status_code, 200)
+        self.assertEqual(self.phase(), 'voting')
+
+    def test_deadline_opens_voting_and_host_can_end_drawing_early(self):
+        self.start_drawing()
+        a, _, _ = self.players
+        a.post('/api/drawing/submit', json={'round': 1, 'image': PNG})
+        self.set_round_deadline(-(drawing.SUBMIT_GRACE_SECONDS - 2))
+        self.assertEqual(a.get('/api/drawing/current').get_json()['phase'], 'drawing')
+        self.set_round_deadline(-(drawing.SUBMIT_GRACE_SECONDS + 1))
+        self.assertEqual(a.get('/api/drawing/current').get_json()['phase'], 'voting')
+        # Round two: the host skips the wait while two players are still drawing.
+        self.assertEqual(self.host.post('/api/drawing/advance', json={'round': 1, 'phase': 'voting'}).status_code, 200)
+        self.assertEqual(a.post('/api/drawing/submit', json={'round': 2, 'image': PNG}).status_code, 200)
+        self.assertEqual(self.phase(), 'drawing')
+        self.assertEqual(self.host.post('/api/drawing/advance', json={'round': 2, 'phase': 'drawing'}).status_code, 200)
+        self.assertEqual(self.phase(), 'voting')
+
     def test_rooms_saved_without_time_limit_use_the_default(self):
         conn = server.get_db()
         conn.execute('UPDATE rooms SET settings_json = ? WHERE id = ?', (json.dumps({'drawing': {'rounds': 1, 'prompts': ['old']}}), self.room_id))

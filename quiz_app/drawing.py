@@ -18,6 +18,8 @@ DEFAULT_TIME_LIMIT = 90
 # Drawings that the browser auto-submits when the timer hits zero arrive a
 # moment after the deadline; they are still accepted inside this window.
 SUBMIT_GRACE_SECONDS = 5
+# Same window the rest of the room uses to call a participant "online".
+PRESENCE_WINDOW_SECONDS = 60
 
 
 def api():
@@ -96,6 +98,57 @@ def drawing_time_left(config):
     if config.get("phase") != "drawing" or not config.get("ends_at"):
         return None
     return (datetime.fromisoformat(config["ends_at"]) - datetime.now()).total_seconds()
+
+
+def round_progress(conn, activity, config):
+    """Who has submitted this round, and who the round is still waiting for.
+
+    Online participants (seen within the presence window) are expected to
+    draw. Someone who submitted and then went offline still counts as done,
+    and someone who closed the tab without submitting stops blocking the round.
+    """
+    submitted = {
+        row["participant_id"] for row in conn.execute(
+            "SELECT participant_id FROM drawings WHERE activity_id = ? AND round_number = ?",
+            (activity["id"], config["round"]),
+        ).fetchall()
+    }
+    online_since = datetime.now() - timedelta(seconds=PRESENCE_WINDOW_SECONDS)
+    online = {
+        row["id"] for row in conn.execute(
+            "SELECT id, last_seen_at FROM room_participants WHERE room_id = ? AND left_at IS NULL",
+            (activity["room_id"],),
+        ).fetchall()
+        if datetime.fromisoformat(row["last_seen_at"]) >= online_since
+    }
+    return submitted, online | submitted
+
+
+def ready_for_voting(conn, activity, config):
+    if config.get("phase") != "drawing":
+        return False
+    submitted, expected = round_progress(conn, activity, config)
+    if submitted and submitted >= expected:
+        return True
+    time_left = drawing_time_left(config)
+    return time_left is not None and time_left < -SUBMIT_GRACE_SECONDS
+
+
+def open_voting_when_ready(conn, room_id):
+    """Move the current round to voting once every picture is in.
+
+    Must run inside the room lock. Returns True when the phase changed; the
+    caller commits and announces the change.
+    """
+    activity = current(conn, room_id)
+    if not activity:
+        return False
+    config = json.loads(activity["config_json"])
+    if not ready_for_voting(conn, activity, config):
+        return False
+    config["phase"] = "voting"
+    conn.execute("UPDATE activities SET config_json = ? WHERE id = ?", (json.dumps(config, ensure_ascii=False), activity["id"]))
+    return True
 
 
 def settings_ready(config):
@@ -188,6 +241,9 @@ def state(conn, activity, participant, is_host):
         result['time_limit'] = config.get('time_limit')
         result['time_left_ms'] = None if time_left is None else max(0, int(time_left * 1000))
         result['submit_grace_ms'] = SUBMIT_GRACE_SECONDS * 1000
+        submitted, expected = round_progress(conn, activity, config)
+        result['submitted_count'] = len(submitted)
+        result['expected_count'] = len(expected)
     if phase == 'voting':
         vote = conn.execute('SELECT drawing_id FROM drawing_votes WHERE activity_id = ? AND round_number = ? AND voter_id = ?', (activity['id'], number, voter_id)).fetchone()
         result['voted'] = bool(vote)
@@ -215,8 +271,23 @@ def get_state():
     if not activity:
         conn.close()
         return jsonify(error='Немає активної малювалки.'), 404
-    payload = state(conn, activity, participant, bool(host))
+    # The round closes lazily: whichever client polls first after the last
+    # picture (or the deadline) moves it to voting for everyone.
+    voting_opened = False
+    if ready_for_voting(conn, activity, json.loads(activity['config_json'])):
+        conn.lock_room(room_id)
+        voting_opened = open_voting_when_ready(conn, room_id)
+        activity = current(conn, room_id)
+    if participant and datetime.fromisoformat(participant['last_seen_at']) < datetime.now() - timedelta(seconds=15):
+        # The drawing page polls; keep the artist counted as online.
+        api().touch_participant(conn, participant['id'])
+    payload = state(conn, activity, participant, bool(host)) if activity else None
+    conn.commit()
     conn.close()
+    if voting_opened:
+        api().emit_room_event(room_id, 'room:drawing_updated')
+    if not payload:
+        return jsonify(error='Немає активної малювалки.'), 404
     return jsonify(payload)
 
 
@@ -257,6 +328,9 @@ def submit():
         return jsonify(error='Малюнок уже надіслано.'), 409
     now = datetime.now()
     conn.execute('INSERT INTO drawings (activity_id, room_id, round_number, participant_id, author, prompt, image, share_token, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', (activity['id'], participant['room_id'], config['round'], participant['id'], participant['display_name'], config['prompts'][config['round']-1], image, secrets.token_urlsafe(32), now.isoformat(timespec='seconds'), (now + timedelta(days=7)).isoformat(timespec='seconds')))
+    api().touch_participant(conn, participant['id'])
+    # The last picture of the round opens voting straight away.
+    open_voting_when_ready(conn, participant['room_id'])
     conn.commit()
     conn.close()
     api().emit_room_event(participant['room_id'], 'room:drawing_updated')

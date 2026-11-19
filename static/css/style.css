@@ -1415,6 +1415,12 @@ th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spa
 .drawing-card img { width:100%; aspect-ratio:1/1; object-fit:contain; background:#fff; border:1px solid var(--ink); }
 .drawing-card span { font-size:13px; }
 .drawing-winners { border-left:7px solid var(--signal); padding-left:20px; font-size:20px; font-weight:800; }
+.drawing-progress { display:grid; grid-template-columns:auto 1fr; align-items:baseline; gap:4px 12px; max-width:560px; margin:28px 0 8px; }
+.drawing-progress strong { font-size:clamp(64px,10vw,120px); line-height:.8; letter-spacing:-.06em; }
+.drawing-progress span { font:900 14px/1 "Courier New",monospace; letter-spacing:.08em; text-transform:uppercase; }
+.drawing-progress-bar { grid-column:1/-1; height:18px; margin-top:14px; border:2px solid var(--ink); background:var(--chalk); }
+.drawing-progress-bar i { display:block; width:0; height:100%; background:var(--signal); transition:width .3s ease; }
+.drawing-content .drawing-host-action.drawing-tool { background:var(--chalk); }
 
 /* Drawing workspace: a square field that always fits the viewport. */
 .drawing-page--workspace .drawing-main { max-width:none; margin:0; padding:0; }
