@@ -42,9 +42,11 @@
             </ol>
         </section>
 
+        {% if guide_video_available %}
         <section class="dv-guide-video dv-guide-video-only" aria-label="Повний відеогайд DvizhGO">
             <div class="dv-guide-video-player"><video controls preload="metadata" playsinline aria-label="Повний відеогайд DvizhGO"><source src="{{ url_for('static', filename='video/dvizhgo-guide.mp4') }}" type="video/mp4">Ваш браузер не підтримує відтворення відео.</video><div class="dv-guide-video-empty"><span>DVIZHGO / VIDEO GUIDE</span><strong>Завантажуємо<br>відеогайд</strong></div></div>
         </section>
+        {% endif %}
 
         <section class="dv-guide-finish"><p class="dv-micro">READY / YOUR TURN</p><h2>Готові почати?</h2><a href="{{ url_for('index') }}">Створити кімнату <span>→</span></a></section>
     </main>
@@ -52,7 +54,7 @@
 </div>
 <script>
 const guideVideo = document.querySelector('.dv-guide-video-player video');
-guideVideo.addEventListener('loadeddata', () => guideVideo.parentElement.classList.add('has-video'));
+guideVideo?.addEventListener('loadeddata', () => guideVideo.parentElement.classList.add('has-video'));
 </script>
 </body>
 </html>
