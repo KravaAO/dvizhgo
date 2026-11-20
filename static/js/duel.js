@@ -241,7 +241,8 @@ function render(round) {
         list.append(card);
     });
     action.append(list);
-    if (round.user_vote) notice.textContent = 'Ваш лайк уже зараховано.';
+    if (round.is_duelist) notice.textContent = 'Учасники дуелі не голосують за відповіді.';
+    else if (round.user_vote) notice.textContent = 'Ваш лайк уже зараховано.';
 }
 
 async function poll() {

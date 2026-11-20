@@ -43,6 +43,15 @@ class DatabaseConnection:
     def close(self):
         self._connection.close()
 
+    def lock_room(self, room_id: int):
+        """Read the room while serializing changes to its settings and runtime."""
+        query = "SELECT * FROM rooms WHERE id = ?"
+        if is_postgres(self._database_url):
+            query += " FOR NO KEY UPDATE"
+        else:
+            self.execute("BEGIN IMMEDIATE")
+        return self.execute(query, (room_id,)).fetchone()
+
     def insert_and_get_id(self, query: str, params: Iterable[Any]) -> int:
         if is_postgres(self._database_url):
             cursor = self.execute(f"{query.rstrip()} RETURNING id", params)
@@ -556,6 +565,30 @@ def initialize_database(database_url: str | None, sqlite_path: Path) -> None:
         )
         for statement in schema:
             connection.execute(statement)
+        id_type = "BIGSERIAL PRIMARY KEY" if is_postgres(database_url) else "INTEGER PRIMARY KEY AUTOINCREMENT"
+        connection.execute(f"""CREATE TABLE IF NOT EXISTS drawings (
+            id {id_type}, activity_id BIGINT NOT NULL, room_id BIGINT NOT NULL,
+            round_number INTEGER NOT NULL, participant_id BIGINT NOT NULL,
+            author TEXT NOT NULL, prompt TEXT NOT NULL, image TEXT NOT NULL,
+            share_token TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL, expires_at TEXT NOT NULL,
+            is_blank INTEGER NOT NULL DEFAULT 0,
+            UNIQUE(activity_id, round_number, participant_id))""")
+        # Rooms created before blank entries existed get the column here.
+        if is_postgres(database_url):
+            connection.execute("ALTER TABLE drawings ADD COLUMN IF NOT EXISTS is_blank INTEGER NOT NULL DEFAULT 0")
+        elif "is_blank" not in {row["name"] for row in connection.execute("PRAGMA table_info(drawings)").fetchall()}:
+            connection.execute("ALTER TABLE drawings ADD COLUMN is_blank INTEGER NOT NULL DEFAULT 0")
+        # The latest autosaved picture of each player who has not submitted
+        # yet; it becomes their entry when the round moves to voting.
+        connection.execute("""CREATE TABLE IF NOT EXISTS drawing_drafts (
+            activity_id BIGINT NOT NULL, round_number INTEGER NOT NULL, participant_id BIGINT NOT NULL,
+            image TEXT NOT NULL, is_blank INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL,
+            PRIMARY KEY(activity_id, round_number, participant_id))""")
+        connection.execute("""CREATE TABLE IF NOT EXISTS drawing_votes (
+            activity_id BIGINT NOT NULL, round_number INTEGER NOT NULL,
+            voter_id BIGINT NOT NULL, drawing_id BIGINT NOT NULL,
+            PRIMARY KEY(activity_id, round_number, voter_id))""")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_drawings_expiry ON drawings(expires_at)")
         _apply_room_migrations(connection, database_url)
         connection.commit()
     finally:
