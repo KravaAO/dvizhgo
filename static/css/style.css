@@ -1512,7 +1512,15 @@ th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spa
 .drawing-card.is-dimmed:hover,.drawing-card.is-dimmed:focus-within { opacity:1; }
 .drawing-vote-button { width:100%; box-shadow:4px 4px 0 var(--ink); }
 .drawing-vote-button:hover:not(:disabled) { transform:translate(-2px,-2px); box-shadow:6px 6px 0 var(--ink); }
-.drawing-card-links { display:flex; flex-wrap:wrap; gap:8px; }
+.drawing-card-row { display:flex; align-items:flex-end; justify-content:space-between; gap:10px; width:100%; margin-top:auto; }
+.drawing-card-info { display:flex; flex-direction:column; gap:4px; min-width:0; }
+.drawing-card-info strong,.drawing-card-info span { overflow-wrap:anywhere; }
+.drawing-card-links { display:flex; flex:none; gap:6px; }
+.drawing-icon-button { display:inline-grid; place-items:center; width:40px; height:40px; padding:0; border:2px solid var(--ink); background:var(--paper); color:var(--ink); cursor:pointer; text-decoration:none; transition:transform .12s ease, box-shadow .12s ease, background-color .12s ease; }
+.drawing-icon-button:hover:not(:disabled) { background:var(--signal); transform:translate(-2px,-2px); box-shadow:3px 3px 0 var(--ink); }
+.drawing-icon-button:focus-visible { outline:3px solid var(--signal); outline-offset:2px; }
+.drawing-icon-button.is-done,.drawing-icon-button.is-done:hover:not(:disabled) { background:var(--petrol); color:var(--chalk); }
+.drawing-icon-button:disabled { cursor:default; }
 
 /* Full-screen picture viewer. */
 .drawing-viewer-open { overflow:hidden; }

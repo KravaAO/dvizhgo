@@ -37,6 +37,28 @@
         b.onclick = async () => { b.disabled = true; try { await fn(); } catch (error) { showToast(error.message, {type:'error'}); } finally { b.disabled = false; } };
         return b;
     }
+    const svgIcon = paths => `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square" stroke-linejoin="miter" aria-hidden="true" focusable="false">${paths}</svg>`;
+    const ICONS = {
+        download: svgIcon('<path d="M12 3v12"/><path d="M6.5 9.5 12 15l5.5-5.5"/><path d="M4 15v5h16v-5"/>'),
+        link: svgIcon('<path d="M10 14a4.5 4.5 0 0 0 6.4 0l3.2-3.2a4.5 4.5 0 0 0-6.4-6.4L11.6 6"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3.2 3.2a4.5 4.5 0 0 0 6.4 6.4l1.6-1.6"/>'),
+        copied: svgIcon('<path d="m4.5 12.5 5 5 10-11"/>'),
+    };
+    function iconControl(node, icon, label) {
+        node.className = 'drawing-icon-button';
+        node.innerHTML = icon;
+        node.setAttribute('aria-label', label);
+        node.title = label;
+        return node;
+    }
+    async function copyText(text) {
+        if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(text); return; }
+        // Plain-HTTP fallback (e.g. a phone on the LAN dev server).
+        const area = el('textarea'); area.value = text; area.setAttribute('readonly', '');
+        area.style.cssText = 'position:fixed;top:0;left:0;opacity:0;';
+        document.body.append(area); area.select();
+        const ok = document.execCommand('copy'); area.remove();
+        if (!ok) throw new Error('Не вдалося скопіювати посилання.');
+    }
     function renderKey(next) {
         const stable = {...next};
         LIVE_FIELDS.forEach(field => delete stable[field]);
@@ -478,12 +500,22 @@
         state.drawings.forEach((work, i) => {
             const card = el('article', undefined, 'drawing-card');
             card.classList.toggle('is-blank', work.blank);
-            const download = el('a', 'Завантажити', 'drawing-tool'); download.href = work.url; download.download = 'malyunok.png';
-            const share = button('Скопіювати посилання', async () => { await navigator.clipboard.writeText(new URL(work.url, location.href).href); showToast('Посилання скопійовано.', {type:'success'}); }, 'drawing-tool');
+            const download = iconControl(el('a'), ICONS.download, 'Завантажити малюнок');
+            download.href = work.url; download.download = `malyunok-${work.round}.png`;
+            const share = iconControl(button('', async () => {
+                await copyText(new URL(work.url, location.href).href);
+                showToast('Посилання скопійовано.', {type:'success'});
+                share.innerHTML = ICONS.copied; share.classList.add('is-done');
+                setTimeout(() => { share.innerHTML = ICONS.link; share.classList.remove('is-done'); }, 1600);
+            }, ''), ICONS.link, 'Скопіювати посилання');
             const links = el('div', undefined, 'drawing-card-links');
             links.append(download, share);
             const caption = `Раунд ${work.round} · ${work.prompt}${work.blank ? ' · порожнє полотно' : ''}`;
-            card.append(pictureButton(work.url, `Малюнок: ${work.prompt}`, () => openViewer(i)), el('strong', work.author), el('span', caption), links);
+            const info = el('div', undefined, 'drawing-card-info');
+            info.append(el('strong', work.author), el('span', caption));
+            const row = el('div', undefined, 'drawing-card-row');
+            row.append(info, links);
+            card.append(pictureButton(work.url, `Малюнок: ${work.prompt}`, () => openViewer(i)), row);
             grid.append(card);
         });
         body.append(grid);
