@@ -982,6 +982,11 @@ th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spa
 .dv-room-mode-status:empty {
     display: none;
 }
+/* One centred column: the heading lines up with the card below it. */
+.dv-quiz-builder-shell.dv-drawing-settings {
+    width: 100%;
+    max-width: 808px;
+}
 .dv-drawing-settings > h1 {
     margin: 32px 0 0;
     font-size: clamp(38px, 7vw, 76px);
@@ -989,7 +994,7 @@ th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spa
     letter-spacing: -.07em;
 }
 .dv-drawing-settings form {
-    max-width: 760px;
+    box-shadow: 7px 7px 0 var(--ink);
 }
 .dv-drawing-settings label {
     display: block;
