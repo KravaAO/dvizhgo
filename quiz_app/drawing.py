@@ -20,6 +20,10 @@ DEFAULT_TIME_LIMIT = 90
 SUBMIT_GRACE_SECONDS = 5
 # Same window the rest of the room uses to call a participant "online".
 PRESENCE_WINDOW_SECONDS = 60
+# Drafts normally become entries or disappear when their round closes; this
+# only sweeps leftovers, e.g. from a room that was closed mid-round.
+DRAFT_RETENTION = timedelta(days=1)
+MAX_IMAGE_DATA_URL = 1400000
 
 
 def api():
@@ -32,6 +36,7 @@ def cleanup():
     try:
         conn.execute("DELETE FROM drawing_votes WHERE drawing_id IN (SELECT id FROM drawings WHERE expires_at <= ?)", (now_iso(),))
         conn.execute("DELETE FROM drawings WHERE expires_at <= ?", (now_iso(),))
+        conn.execute("DELETE FROM drawing_drafts WHERE updated_at <= ?", ((datetime.now() - DRAFT_RETENTION).isoformat(timespec="seconds"),))
         conn.commit()
     finally:
         conn.close()
@@ -168,8 +173,59 @@ def open_voting_when_ready(conn, room_id):
     if not ready_for_voting(conn, activity, config):
         return False
     config["phase"] = "voting"
+    promote_drafts(conn, activity, config)
     conn.execute("UPDATE activities SET config_json = ? WHERE id = ?", (json.dumps(config, ensure_ascii=False), activity["id"]))
     return True
+
+
+def png_error(image):
+    """Why a submitted data URL is not an acceptable PNG, or None."""
+    if not isinstance(image, str) or not image.startswith("data:image/png;base64,") or len(image) > MAX_IMAGE_DATA_URL:
+        return "Невірний або завеликий малюнок."
+    try:
+        raw = base64.b64decode(image.split(",", 1)[1], validate=True)
+        if raw[:8] != b"\x89PNG\r\n\x1a\n" or raw[12:16] != b"IHDR" or not (1 <= len(raw) <= 1000000):
+            raise ValueError()
+        width, height = struct.unpack(">II", raw[16:24])
+        if not (1 <= width <= 2048 and 1 <= height <= 2048):
+            raise ValueError()
+    except (ValueError, binascii.Error, struct.error):
+        return "Невірний формат малюнка."
+    return None
+
+
+def insert_drawing(conn, activity, config, participant_id, author, image, blank):
+    now = datetime.now()
+    conn.execute(
+        """INSERT INTO drawings (activity_id, room_id, round_number, participant_id, author, prompt,
+                                 image, share_token, created_at, expires_at, is_blank)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (activity["id"], activity["room_id"], config["round"], participant_id, author,
+         config["prompts"][config["round"] - 1], image, secrets.token_urlsafe(32),
+         now.isoformat(timespec="seconds"), (now + timedelta(days=7)).isoformat(timespec="seconds"),
+         int(bool(blank))),
+    )
+
+
+def promote_drafts(conn, activity, config):
+    """Enter the autosaved picture of everyone who did not submit in time.
+
+    Runs inside the room lock when the round moves to voting. A blank draft
+    is an entry too: the player had the canvas open. People who left the
+    room are skipped.
+    """
+    drafts = conn.execute(
+        """SELECT d.participant_id, d.image, d.is_blank, p.display_name
+           FROM drawing_drafts d JOIN room_participants p ON p.id = d.participant_id
+           WHERE d.activity_id = ? AND d.round_number = ? AND p.left_at IS NULL
+             AND NOT EXISTS (SELECT 1 FROM drawings w WHERE w.activity_id = d.activity_id
+                             AND w.round_number = d.round_number AND w.participant_id = d.participant_id)
+           ORDER BY d.participant_id""",
+        (activity["id"], config["round"]),
+    ).fetchall()
+    for draft in drafts:
+        insert_drawing(conn, activity, config, draft["participant_id"], draft["display_name"], draft["image"], draft["is_blank"])
+    conn.execute("DELETE FROM drawing_drafts WHERE activity_id = ? AND round_number = ?", (activity["id"], config["round"]))
 
 
 def settings_ready(config):
@@ -247,7 +303,7 @@ def page():
 def state(conn, activity, participant, is_host):
     config = json.loads(activity['config_json'])
     rows = conn.execute(
-        '''SELECT id, participant_id, round_number, share_token, author, prompt, expires_at
+        '''SELECT id, participant_id, round_number, share_token, author, prompt, expires_at, is_blank
            FROM drawings WHERE activity_id = ? AND expires_at > ? ORDER BY round_number, share_token''',
         (activity['id'], now_iso()),
     ).fetchall()
@@ -270,7 +326,7 @@ def state(conn, activity, participant, is_host):
         works = [row for row in rows if row['round_number'] == number]
         result['voted'] = bool(vote)
         result['voted_for'] = vote['drawing_id'] if vote else None
-        result['drawings'] = [{'id': row['id'], 'url': url_for('drawing.image', token=row['share_token']), 'own': row['participant_id'] == voter_id} for row in works]
+        result['drawings'] = [{'id': row['id'], 'url': url_for('drawing.image', token=row['share_token']), 'own': row['participant_id'] == voter_id, 'blank': bool(row['is_blank'])} for row in works]
         result['can_vote'] = bool(voter_id and not vote and any(not work['own'] for work in result['drawings']))
         voted, voters = vote_progress(conn, activity, config, [row['participant_id'] for row in works])
         result['votes_count'] = len(voted)
@@ -284,7 +340,7 @@ def state(conn, activity, participant, is_host):
             best = max((votes.get(r['id'], 0) for r in works), default=0)
             winners.append({'round': n, 'prompt': config['prompts'][n-1], 'names': [r['author'] for r in works if best and votes.get(r['id'], 0) == best]})
         result['winners'] = winners
-        result['drawings'] = [{'url': url_for('drawing.image', token=r['share_token']), 'author': r['author'], 'prompt': r['prompt'], 'round': r['round_number'], 'expires_at': r['expires_at']} for r in rows]
+        result['drawings'] = [{'url': url_for('drawing.image', token=r['share_token']), 'author': r['author'], 'prompt': r['prompt'], 'round': r['round_number'], 'expires_at': r['expires_at'], 'blank': bool(r['is_blank'])} for r in rows]
     return result
 
 
@@ -319,19 +375,12 @@ def get_state():
 
 @bp.post('/api/drawing/submit')
 def submit():
-    data = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True)
+    data = data if isinstance(data, dict) else {}
     image = data.get('image', '')
-    if not isinstance(image, str) or not image.startswith('data:image/png;base64,') or len(image) > 1400000:
-        return jsonify(error='Невірний або завеликий малюнок.'), 400
-    try:
-        raw = base64.b64decode(image.split(',', 1)[1], validate=True)
-        if raw[:8] != b'\x89PNG\r\n\x1a\n' or raw[12:16] != b'IHDR' or not (1 <= len(raw) <= 1000000):
-            raise ValueError()
-        width, height = struct.unpack('>II', raw[16:24])
-        if not (1 <= width <= 2048 and 1 <= height <= 2048):
-            raise ValueError()
-    except (ValueError, binascii.Error, struct.error):
-        return jsonify(error='Невірний формат малюнка.'), 400
+    error = png_error(image)
+    if error:
+        return jsonify(error=error), 400
     conn = api().get_db()
     participant, _ = identity(conn)
     if participant:
@@ -352,8 +401,8 @@ def submit():
     if existing:
         conn.close()
         return jsonify(error='Малюнок уже надіслано.'), 409
-    now = datetime.now()
-    conn.execute('INSERT INTO drawings (activity_id, room_id, round_number, participant_id, author, prompt, image, share_token, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', (activity['id'], participant['room_id'], config['round'], participant['id'], participant['display_name'], config['prompts'][config['round']-1], image, secrets.token_urlsafe(32), now.isoformat(timespec='seconds'), (now + timedelta(days=7)).isoformat(timespec='seconds')))
+    insert_drawing(conn, activity, config, participant['id'], participant['display_name'], image, data.get('blank') is True)
+    conn.execute('DELETE FROM drawing_drafts WHERE activity_id = ? AND round_number = ? AND participant_id = ?', (activity['id'], config['round'], participant['id']))
     api().touch_participant(conn, participant['id'])
     # The last picture of the round opens voting straight away.
     open_voting_when_ready(conn, participant['room_id'])
@@ -361,6 +410,71 @@ def submit():
     conn.close()
     api().emit_room_event(participant['room_id'], 'room:drawing_updated')
     return jsonify(ok=True)
+
+
+@bp.post('/api/drawing/draft')
+def save_draft():
+    """Autosave: keep the latest picture of a player who is still drawing."""
+    data = request.get_json(silent=True)
+    data = data if isinstance(data, dict) else {}
+    image = data.get('image', '')
+    error = png_error(image)
+    if error:
+        return jsonify(error=error), 400
+    conn = api().get_db()
+    try:
+        participant, host = identity(conn)
+        if not participant or host:
+            return jsonify(error='Малювати можуть учасники кімнати.'), 401
+        conn.lock_room(participant['room_id'])
+        activity = current(conn, participant['room_id'])
+        if not activity:
+            return jsonify(error='Немає активної гри.'), 409
+        config = json.loads(activity['config_json'])
+        time_left = drawing_time_left(config)
+        if (config['phase'] != 'drawing' or data.get('round') != config['round']
+                or (time_left is not None and time_left < -SUBMIT_GRACE_SECONDS)):
+            return jsonify(error='Цей раунд уже завершено.'), 409
+        submitted = conn.execute(
+            'SELECT 1 FROM drawings WHERE activity_id = ? AND round_number = ? AND participant_id = ?',
+            (activity['id'], config['round'], participant['id']),
+        ).fetchone()
+        if submitted:
+            return jsonify(ok=True, submitted=True)
+        conn.execute(
+            '''INSERT INTO drawing_drafts (activity_id, round_number, participant_id, image, is_blank, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?)
+               ON CONFLICT (activity_id, round_number, participant_id)
+               DO UPDATE SET image = excluded.image, is_blank = excluded.is_blank, updated_at = excluded.updated_at''',
+            (activity['id'], config['round'], participant['id'], image, int(data.get('blank') is True), now_iso()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return jsonify(ok=True)
+
+
+@bp.get('/api/drawing/draft')
+def load_draft():
+    """The player's autosaved picture for the current round, after a reload."""
+    conn = api().get_db()
+    try:
+        participant, host = identity(conn)
+        if not participant or host:
+            return jsonify(error='Немає активної сесії.'), 401
+        activity = current(conn, participant['room_id'])
+        if not activity:
+            return jsonify(error='Немає активної гри.'), 404
+        config = json.loads(activity['config_json'])
+        row = conn.execute(
+            'SELECT image, is_blank FROM drawing_drafts WHERE activity_id = ? AND round_number = ? AND participant_id = ?',
+            (activity['id'], config['round'], participant['id']),
+        ).fetchone()
+    finally:
+        conn.close()
+    if config['phase'] != 'drawing' or not row:
+        return jsonify(round=config['round'], image=None)
+    return jsonify(round=config['round'], image=row['image'], blank=bool(row['is_blank']))
 
 
 @bp.post('/api/drawing/vote')
@@ -421,7 +535,9 @@ def advance():
         conn.close()
         return jsonify(error='Стан гри змінився. Оновіть сторінку.'), 409
     if config['phase'] == 'drawing':
+        # Ending early still enters what everyone had drawn so far.
         config['phase'] = 'voting'
+        promote_drafts(conn, activity, config)
     elif config['phase'] == 'voting':
         if config['round'] < config['rounds']:
             config['round'] += 1

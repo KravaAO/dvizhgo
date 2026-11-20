@@ -571,7 +571,19 @@ def initialize_database(database_url: str | None, sqlite_path: Path) -> None:
             round_number INTEGER NOT NULL, participant_id BIGINT NOT NULL,
             author TEXT NOT NULL, prompt TEXT NOT NULL, image TEXT NOT NULL,
             share_token TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL, expires_at TEXT NOT NULL,
+            is_blank INTEGER NOT NULL DEFAULT 0,
             UNIQUE(activity_id, round_number, participant_id))""")
+        # Rooms created before blank entries existed get the column here.
+        if is_postgres(database_url):
+            connection.execute("ALTER TABLE drawings ADD COLUMN IF NOT EXISTS is_blank INTEGER NOT NULL DEFAULT 0")
+        elif "is_blank" not in {row["name"] for row in connection.execute("PRAGMA table_info(drawings)").fetchall()}:
+            connection.execute("ALTER TABLE drawings ADD COLUMN is_blank INTEGER NOT NULL DEFAULT 0")
+        # The latest autosaved picture of each player who has not submitted
+        # yet; it becomes their entry when the round moves to voting.
+        connection.execute("""CREATE TABLE IF NOT EXISTS drawing_drafts (
+            activity_id BIGINT NOT NULL, round_number INTEGER NOT NULL, participant_id BIGINT NOT NULL,
+            image TEXT NOT NULL, is_blank INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL,
+            PRIMARY KEY(activity_id, round_number, participant_id))""")
         connection.execute("""CREATE TABLE IF NOT EXISTS drawing_votes (
             activity_id BIGINT NOT NULL, round_number INTEGER NOT NULL,
             voter_id BIGINT NOT NULL, drawing_id BIGINT NOT NULL,

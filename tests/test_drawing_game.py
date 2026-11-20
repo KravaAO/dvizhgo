@@ -1,16 +1,29 @@
 ﻿import base64
 import json
+import sqlite3
+import struct
 import tempfile
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from pathlib import Path
 from threading import Barrier
+import zlib
 
 from quiz_app import routes as server
 from quiz_app import drawing
+from quiz_app.database import initialize_database
 
 PNG = 'data:image/png;base64,' + base64.b64encode(base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/aS8AAAAASUVORK5CYII=')).decode()
+
+
+def white_png(width):
+    """A valid white PNG, width x 1, to tell saved pictures apart."""
+    def chunk(kind, body):
+        return struct.pack('>I', len(body)) + kind + body + struct.pack('>I', zlib.crc32(kind + body))
+    header = struct.pack('>IIBBBBB', width, 1, 8, 0, 0, 0, 0)
+    data = b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', header) + chunk(b'IDAT', zlib.compress(b'\x00' + b'\xff' * width)) + chunk(b'IEND', b'')
+    return 'data:image/png;base64,' + base64.b64encode(data).decode()
 
 class DrawingGameTest(unittest.TestCase):
     def setUp(self):
@@ -199,6 +212,68 @@ class DrawingGameTest(unittest.TestCase):
         # B went offline after voting and still counts; C stops being waited for.
         state = self.host.get('/api/drawing/current').get_json()
         self.assertEqual((state['votes_count'], state['voters_count']), (1, 1))
+
+    def save_draft(self, client, round_number=1, image=PNG, blank=False):
+        return client.post('/api/drawing/draft', json={'round': round_number, 'image': image, 'blank': blank})
+
+    def test_autosaved_drafts_become_entries_when_time_runs_out(self):
+        self.start_drawing()
+        a, b, c = self.players
+        self.assertEqual(self.save_draft(a).status_code, 200)
+        self.assertEqual(self.save_draft(a, image=white_png(2)).status_code, 200)
+        self.assertEqual(self.save_draft(b, image=white_png(3), blank=True).status_code, 200)
+        # A reload brings the latest autosave back; C never opened the canvas.
+        self.assertEqual(a.get('/api/drawing/draft').get_json()['image'], white_png(2))
+        self.assertIsNone(c.get('/api/drawing/draft').get_json()['image'])
+        self.assertEqual(self.host.post('/api/drawing/draft', json={'round': 1, 'image': PNG}).status_code, 401)
+        self.assertEqual(self.save_draft(a, round_number=2).status_code, 409)
+        self.assertEqual(a.post('/api/drawing/draft', json={'round': 1, 'image': 'data:image/png;base64,AAAA'}).status_code, 400)
+        self.set_round_deadline(-(drawing.SUBMIT_GRACE_SECONDS + 1))
+        self.assertEqual(self.save_draft(a).status_code, 409)
+        state = c.get('/api/drawing/current').get_json()
+        self.assertEqual(state['phase'], 'voting')
+        self.assertEqual(sorted(work['blank'] for work in state['drawings']), [False, True])
+        # A blank canvas is an ordinary entry: it can be shown and voted for.
+        blank = next(work for work in state['drawings'] if work['blank'])
+        self.assertEqual(c.post('/api/drawing/vote', json={'round': 1, 'drawing_id': blank['id']}).status_code, 200)
+        conn = server.get_db()
+        images = {row['author']: row['image'] for row in conn.execute('SELECT author, image FROM drawings').fetchall()}
+        drafts_left = conn.execute('SELECT COUNT(*) AS n FROM drawing_drafts').fetchone()['n']
+        conn.close()
+        self.assertEqual(images, {'Player 0': white_png(2), 'Player 1': white_png(3)})
+        self.assertEqual(drafts_left, 0)
+
+    def test_ending_early_enters_drafts_except_for_players_who_left(self):
+        self.start_drawing()
+        a, b, c = self.players
+        for player in (a, b):
+            self.save_draft(player)
+        self.save_draft(c, blank=True)
+        # A blank canvas can be submitted on purpose; the draft is then gone.
+        self.assertEqual(a.post('/api/drawing/submit', json={'round': 1, 'image': PNG, 'blank': True}).status_code, 200)
+        self.assertIsNone(a.get('/api/drawing/draft').get_json()['image'])
+        self.assertTrue(self.save_draft(a).get_json()['submitted'])
+        conn = server.get_db()
+        conn.execute("UPDATE room_participants SET left_at = ? WHERE display_name = 'Player 1'", (datetime.now().isoformat(timespec='seconds'),))
+        conn.commit(); conn.close()
+        self.assertEqual(self.host.post('/api/drawing/advance', json={'round': 1, 'phase': 'drawing'}).status_code, 200)
+        works = self.host.get('/api/drawing/current').get_json()['drawings']
+        self.assertEqual([work['blank'] for work in works].count(True), 2)
+        self.assertEqual(len(works), 2)
+
+    def test_existing_drawings_table_gets_the_blank_column(self):
+        path = Path(self.tmp.name, 'old.sqlite')
+        old = sqlite3.connect(path)
+        old.execute('''CREATE TABLE drawings (id INTEGER PRIMARY KEY AUTOINCREMENT, activity_id BIGINT NOT NULL,
+            room_id BIGINT NOT NULL, round_number INTEGER NOT NULL, participant_id BIGINT NOT NULL,
+            author TEXT NOT NULL, prompt TEXT NOT NULL, image TEXT NOT NULL, share_token TEXT NOT NULL UNIQUE,
+            created_at TEXT NOT NULL, expires_at TEXT NOT NULL, UNIQUE(activity_id, round_number, participant_id))''')
+        old.execute("INSERT INTO drawings VALUES (1, 1, 1, 1, 1, 'a', 'p', 'img', 'tok', 'x', 'y')")
+        old.commit(); old.close()
+        initialize_database('sqlite:///' + path.as_posix(), path)
+        migrated = sqlite3.connect(path)
+        self.assertEqual(migrated.execute('SELECT is_blank FROM drawings').fetchone()[0], 0)
+        migrated.close()
 
     def test_rooms_saved_without_time_limit_use_the_default(self):
         conn = server.get_db()
