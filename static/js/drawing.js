@@ -6,7 +6,7 @@
     const isHost = document.body.dataset.host === 'true';
     // Values that change on every poll; they update in place instead of
     // rebuilding the screen.
-    const LIVE_FIELDS = ['time_left_ms', 'submitted_count', 'expected_count'];
+    const LIVE_FIELDS = ['time_left_ms', 'submitted_count', 'expected_count', 'votes_count', 'voters_count'];
     let lastKey = '', state = null;
     // The board survives re-renders of the same round, so polling or socket
     // updates never wipe a picture that is still being drawn.
@@ -15,6 +15,8 @@
     let deadlineAt = null, timeUpRound = null, lateRefreshRound = null;
     // Seconds whose countdown cue already sounded, reset every round.
     let cueRound = null, cuedSeconds = new Set();
+    // The open full-screen picture viewer, if any.
+    let viewer = null;
 
     const el = (tag, text, cls) => { const node = document.createElement(tag); if (text !== undefined) node.textContent = text; if (cls) node.className = cls; return node; };
     async function send(url, body = {}) {
@@ -61,12 +63,24 @@
         boardRound = null;
     }
 
-    function progressBlock() {
-        const block = el('div', undefined, 'drawing-progress');
+    // Live "done / total" counter: pictures while drawing, votes while voting.
+    function progressCounts() {
+        if (!state) return null;
+        if (state.phase === 'drawing' && typeof state.expected_count === 'number') {
+            return {done:state.submitted_count, total:Math.max(state.expected_count, state.submitted_count), label:'надіслали'};
+        }
+        if (state.phase === 'voting' && typeof state.voters_count === 'number') {
+            return {done:state.votes_count, total:Math.max(state.voters_count, state.votes_count), label:'проголосували'};
+        }
+        return null;
+    }
+
+    function progressBlock(compact = false) {
+        const block = el('div', undefined, compact ? 'drawing-progress drawing-progress--compact' : 'drawing-progress');
         const count = el('strong');
-        count.dataset.live = 'submitted';
+        count.dataset.live = 'done';
         const total = el('span');
-        total.dataset.live = 'expected';
+        total.dataset.live = 'total';
         const bar = el('div', undefined, 'drawing-progress-bar');
         const fill = el('i');
         fill.dataset.live = 'bar';
@@ -76,11 +90,14 @@
     }
 
     function updateProgress() {
-        if (!state || state.phase !== 'drawing' || typeof state.expected_count !== 'number') return;
-        const expected = Math.max(state.expected_count, state.submitted_count);
-        root.querySelectorAll('[data-live="submitted"]').forEach(node => { node.textContent = state.submitted_count; });
-        root.querySelectorAll('[data-live="expected"]').forEach(node => { node.textContent = `/ ${expected} надіслали`; });
-        root.querySelectorAll('[data-live="bar"]').forEach(node => { node.style.width = `${expected ? state.submitted_count / expected * 100 : 0}%`; });
+        const counts = progressCounts();
+        if (!counts) return;
+        const complete = counts.total > 0 && counts.done >= counts.total;
+        root.querySelectorAll('[data-live="done"]').forEach(node => { node.textContent = counts.done; });
+        root.querySelectorAll('[data-live="total"]').forEach(node => { node.textContent = `/ ${counts.total} ${counts.label}`; });
+        root.querySelectorAll('[data-live="bar"]').forEach(node => { node.style.width = `${counts.total ? counts.done / counts.total * 100 : 0}%`; });
+        // Everyone has voted: nudge the host towards the next step.
+        root.querySelectorAll('[data-live="ready"]').forEach(node => { node.classList.toggle('is-ready', complete); });
     }
 
     function confirmDialog({title, text, confirmLabel, cancelLabel = 'Скасувати'}) {
@@ -119,6 +136,20 @@
             confirmLabel: 'Відкрити голосування',
         });
         if (confirmed) await update('/api/drawing/advance', {round:state.round, phase:'drawing'});
+    }
+
+    async function finishVoting() {
+        const last = state.round === state.rounds;
+        const missing = Math.max(0, state.voters_count - state.votes_count);
+        if (missing) {
+            const confirmed = await confirmDialog({
+                title: last ? 'Показати результати?' : 'Наступний раунд?',
+                text: `Ще не проголосували: ${missing}. Їхні голоси в цьому раунді не врахуються.`,
+                confirmLabel: last ? 'Показати результати' : 'Наступний раунд',
+            });
+            if (!confirmed) return;
+        }
+        await update('/api/drawing/advance', {round:state.round, phase:'voting'});
     }
 
     function formatTime(ms) {
@@ -199,55 +230,201 @@
         root.append(workspace);
     }
 
+    // A host button whose label shortens on phones; the full text stays
+    // the accessible name.
+    function hostButton(long, short, fn, cls) {
+        const b = button('', fn, `${cls} drawing-host-action`);
+        b.setAttribute('aria-label', long);
+        b.append(el('span', long, 'label-long'), el('span', short, 'label-short'));
+        return b;
+    }
+
+    function hostAction() {
+        if (!isHost) return null;
+        if (state.phase === 'drawing') return hostButton('Завершити малювання', 'Завершити', endDrawingEarly, 'drawing-tool');
+        if (state.phase === 'voting') {
+            const last = state.round === state.rounds;
+            const next = hostButton(last ? 'Показати результати →' : 'Наступний раунд →', last ? 'Фінал →' : 'Далі →', finishVoting, 'drawing-button');
+            next.dataset.live = 'ready';
+            return next;
+        }
+        return hostButton('Повернутися в лобі', 'У лобі', () => update('/api/drawing/advance', {round:state.round, phase:state.phase}), 'drawing-button');
+    }
+
+    // Every screen except the canvas: round and topic on the left, the
+    // host's next step always in the top-right corner.
+    function stage(eyebrow, title) {
+        const bar = el('div', undefined, 'draw-topbar drawing-stagebar');
+        const prompt = el('div', undefined, 'draw-prompt');
+        prompt.append(el('span', eyebrow, 'drawing-eyebrow'), el('h1', title));
+        bar.append(prompt);
+        const action = hostAction();
+        if (action) bar.append(action);
+        const body = el('div', undefined, 'drawing-content');
+        root.append(bar, body);
+        return body;
+    }
+
+    const workLabel = i => `Робота ${i + 1}`;
+    const canVoteFor = work => state.can_vote && !work.own;
+
+    async function castVote(work) {
+        await send('/api/drawing/vote', {round:state.round, drawing_id:work.id});
+        showToast('Голос зараховано!', {type:'success'});
+        await refresh();
+    }
+
+    function pictureButton(url, label, onOpen) {
+        const open = el('button', undefined, 'drawing-card-image');
+        open.type = 'button';
+        open.setAttribute('aria-label', `${label}: відкрити на весь екран`);
+        const img = document.createElement('img');
+        img.src = url; img.alt = label; img.loading = 'lazy'; img.decoding = 'async';
+        open.append(img);
+        open.onclick = onOpen;
+        return open;
+    }
+
+    // Full-screen look at one picture, with arrows (or a swipe) to the rest.
+    function openViewer(index) {
+        closeViewer();
+        const works = state.drawings;
+        const results = state.phase === 'results';
+        const backdrop = el('div', undefined, 'drawing-viewer');
+        backdrop.setAttribute('role', 'dialog');
+        backdrop.setAttribute('aria-modal', 'true');
+        backdrop.setAttribute('aria-label', 'Перегляд роботи');
+        const close = el('button', '✕', 'drawing-viewer-close');
+        const prev = el('button', '←', 'drawing-viewer-nav drawing-viewer-prev');
+        const next = el('button', '→', 'drawing-viewer-nav drawing-viewer-next');
+        [close, prev, next].forEach(b => { b.type = 'button'; });
+        close.setAttribute('aria-label', 'Закрити');
+        prev.setAttribute('aria-label', 'Попередня робота');
+        next.setAttribute('aria-label', 'Наступна робота');
+        const figure = el('figure');
+        const img = document.createElement('img');
+        const caption = el('figcaption');
+        figure.append(img, caption);
+        const actions = el('div', undefined, 'drawing-viewer-actions');
+        backdrop.append(close, prev, figure, next, actions);
+        let current = index;
+        function show(i) {
+            current = (i + works.length) % works.length;
+            const work = works[current];
+            img.src = work.url;
+            img.alt = results ? `Малюнок: ${work.prompt}` : workLabel(current);
+            const notes = results ? [work.author, `Раунд ${work.round}`, work.prompt] : [`${workLabel(current)} з ${works.length}`];
+            if (!results && work.own) notes.push('Ваша робота');
+            if (!results && state.voted_for === work.id) notes.push('★ Ваш голос');
+            caption.textContent = notes.join(' · ');
+            actions.replaceChildren();
+            if (!results && canVoteFor(work)) actions.append(button('Голосувати за цю роботу', () => castVote(work), 'drawing-button drawing-vote-button'));
+        }
+        prev.hidden = next.hidden = works.length < 2;
+        prev.onclick = () => show(current - 1);
+        next.onclick = () => show(current + 1);
+        close.onclick = () => closeViewer();
+        backdrop.onclick = event => { if (event.target === backdrop) closeViewer(); };
+        let swipeFrom = null;
+        figure.addEventListener('pointerdown', event => { swipeFrom = event.clientX; });
+        figure.addEventListener('pointerup', event => {
+            if (swipeFrom === null || works.length < 2) return;
+            const dx = event.clientX - swipeFrom;
+            swipeFrom = null;
+            if (Math.abs(dx) > 50) show(current + (dx < 0 ? 1 : -1));
+        });
+        const onKey = event => {
+            if (event.key === 'Escape') closeViewer();
+            else if (event.key === 'ArrowLeft' && works.length > 1) show(current - 1);
+            else if (event.key === 'ArrowRight' && works.length > 1) show(current + 1);
+        };
+        const opener = document.activeElement;
+        viewer = () => {
+            document.removeEventListener('keydown', onKey);
+            backdrop.remove();
+            document.body.classList.remove('drawing-viewer-open');
+            if (opener && opener.isConnected) opener.focus();
+        };
+        document.addEventListener('keydown', onKey);
+        document.body.append(backdrop);
+        document.body.classList.add('drawing-viewer-open');
+        show(index);
+        close.focus();
+    }
+
+    function closeViewer() {
+        if (!viewer) return;
+        const close = viewer;
+        viewer = null;
+        close();
+    }
+
+    function renderWaiting(body) {
+        if (isHost) body.append(el('p', 'Голосування відкриється само, щойно всі надішлють малюнки або вийде час.'));
+        else if (state.submitted) body.append(el('p', 'Ваш малюнок надіслано ✓ Голосування почнеться, коли всі закінчать.'));
+        else body.append(el('p', 'Час вийшов. Голосування почнеться, коли всі закінчать.'));
+        body.append(progressBlock());
+    }
+
+    function renderVoting(body) {
+        const status = el('div', undefined, 'drawing-vote-status');
+        let hint;
+        if (isHost) hint = 'Роботи анонімні до кінця гри. Коли всі проголосують, переходьте далі.';
+        else if (state.voted) hint = 'Ваш голос зараховано ✓ Чекаємо на інших.';
+        else if (state.can_vote) hint = 'Оберіть найкращу чужу роботу. Голос один — змінити його не можна.';
+        else hint = 'У цьому раунді немає чужих робіт, за які можна проголосувати.';
+        status.append(progressBlock(true), el('p', hint, 'drawing-vote-hint'));
+        body.append(status);
+        if (!state.drawings.length) { body.append(el('p', 'У цьому раунді немає надісланих робіт.')); return; }
+        const grid = el('div', undefined, 'drawing-gallery drawing-gallery--vote');
+        state.drawings.forEach((work, i) => {
+            const voted = state.voted_for === work.id;
+            const card = el('article', undefined, 'drawing-card');
+            card.classList.toggle('is-own', work.own);
+            card.classList.toggle('is-voted', voted);
+            card.classList.toggle('is-dimmed', state.voted && !voted);
+            const foot = el('div', undefined, 'drawing-card-foot');
+            foot.append(el('strong', workLabel(i)));
+            if (work.own) foot.append(el('span', 'Ваша робота', 'drawing-badge'));
+            if (voted) foot.append(el('span', '★ Ваш голос', 'drawing-badge drawing-badge--vote'));
+            card.append(pictureButton(work.url, workLabel(i), () => openViewer(i)), foot);
+            if (canVoteFor(work)) card.append(button('Голосувати', () => castVote(work), 'drawing-button drawing-vote-button'));
+            grid.append(card);
+        });
+        body.append(grid);
+    }
+
+    function renderResults(body) {
+        const winners = el('section', undefined, 'drawing-winners');
+        state.winners.forEach(w => winners.append(el('p', `${w.round}. ${w.prompt} — ${w.names.length ? w.names.join(', ') : 'немає переможця'}`)));
+        body.append(winners, el('h2', 'Усі роботи'), el('p', 'Роботи доступні за посиланням протягом 7 днів після надсилання.'));
+        const grid = el('div', undefined, 'drawing-gallery');
+        state.drawings.forEach((work, i) => {
+            const card = el('article', undefined, 'drawing-card');
+            const download = el('a', 'Завантажити', 'drawing-tool'); download.href = work.url; download.download = 'malyunok.png';
+            const share = button('Скопіювати посилання', async () => { await navigator.clipboard.writeText(new URL(work.url, location.href).href); showToast('Посилання скопійовано.', {type:'success'}); }, 'drawing-tool');
+            const links = el('div', undefined, 'drawing-card-links');
+            links.append(download, share);
+            card.append(pictureButton(work.url, `Малюнок: ${work.prompt}`, () => openViewer(i)), el('strong', work.author), el('span', `Раунд ${work.round} · ${work.prompt}`), links);
+            grid.append(card);
+        });
+        body.append(grid);
+    }
+
     function render() {
+        closeViewer();
         progress.textContent = `РАУНД ${state.round} / ${state.rounds}`;
         root.replaceChildren();
         const timedOut = timeUpRound === state.round;
         const drawingNow = state.phase === 'drawing' && !isHost && !state.submitted && !timedOut;
         document.body.classList.toggle('drawing-page--workspace', drawingNow);
+        document.body.classList.toggle('drawing-page--stage', !drawingNow);
         if (drawingNow) { renderWorkspace(); return; }
         dropBoard();
-        const content = el('div', undefined, 'drawing-content');
-        root.append(content);
-        content.append(el('div', state.phase === 'results' ? 'ФІНАЛ' : `РАУНД ${state.round}`, 'drawing-eyebrow'));
-        content.append(el('h1', state.phase === 'results' ? 'Ось наші переможці!' : state.prompt));
-        if (state.phase === 'drawing') {
-            if (isHost) content.append(el('p', 'Голосування відкриється само, щойно всі надішлють малюнки або вийде час.'));
-            else if (state.submitted) content.append(el('p', 'Ваш малюнок надіслано ✓ Голосування почнеться, коли всі закінчать.'));
-            else content.append(el('p', 'Час вийшов. Голосування почнеться, коли всі закінчать.'));
-            content.append(progressBlock());
-        } else if (state.phase === 'voting') {
-            content.append(el('p', 'Роботи анонімні до кінця гри. Можна віддати один голос за чужий малюнок.'));
-            if (state.voted) content.append(el('p', 'Ваш голос зараховано ✓'));
-            const grid = el('div', undefined, 'drawing-gallery');
-            state.drawings.forEach((work, i) => {
-                const card = el('article', undefined, 'drawing-card'); const img = document.createElement('img'); img.src = work.url; img.alt = `Робота ${i+1}`;
-                card.append(img, el('strong', `Робота ${i+1}`));
-                if (work.own) card.append(el('span', 'Ваша робота'));
-                else if (state.can_vote) card.append(button('Голосувати за роботу', () => update('/api/drawing/vote', {round:state.round, drawing_id:work.id})));
-                grid.append(card);
-            });
-            if (!state.drawings.length) grid.append(el('p', 'У цьому раунді немає надісланих робіт.'));
-            content.append(grid);
-        } else {
-            const winners = el('section', undefined, 'drawing-winners');
-            state.winners.forEach(w => winners.append(el('p', `${w.round}. ${w.prompt} — ${w.names.length ? w.names.join(', ') : 'немає переможця'}`)));
-            content.append(winners, el('h2', 'Усі роботи'), el('p', 'Роботи доступні за посиланням протягом 7 днів після надсилання.'));
-            const grid = el('div', undefined, 'drawing-gallery');
-            state.drawings.forEach(work => {
-                const card = el('article', undefined, 'drawing-card'); const img = document.createElement('img'); img.src = work.url; img.alt = `Малюнок: ${work.prompt}`;
-                const download = el('a', 'Завантажити', 'drawing-tool'); download.href = work.url; download.download = 'malyunok.png';
-                const share = button('Скопіювати посилання', async () => { await navigator.clipboard.writeText(new URL(work.url, location.href).href); showToast('Посилання скопійовано.', {type:'success'}); }, 'drawing-tool');
-                card.append(img, el('strong', work.author), el('span', `Раунд ${work.round} · ${work.prompt}`), download, share); grid.append(card);
-            });
-            content.append(grid);
-        }
-        if (isHost && state.phase === 'drawing') {
-            content.append(button('Завершити малювання зараз', endDrawingEarly, 'drawing-tool drawing-host-action'));
-        } else if (isHost) {
-            const text = state.phase === 'voting' ? (state.round === state.rounds ? 'Показати результати' : 'Наступний раунд') : 'Повернутися в лобі';
-            content.append(button(text, () => update('/api/drawing/advance', {round:state.round, phase:state.phase}), 'drawing-button drawing-host-action'));
-        }
+        const round = `РАУНД ${state.round} / ${state.rounds}`;
+        if (state.phase === 'drawing') renderWaiting(stage(`${round} · МАЛЮЄМО`, state.prompt));
+        else if (state.phase === 'voting') renderVoting(stage(`${round} · ГОЛОСУВАННЯ`, state.prompt));
+        else renderResults(stage('ФІНАЛ', 'Ось наші переможці!'));
         updateProgress();
     }
     connectRoomSocket({drawing:refresh, state(s) { if (s.activity_type !== 'drawing') window.location.href = '/lobby'; }});

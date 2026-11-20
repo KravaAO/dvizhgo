@@ -180,6 +180,26 @@ class DrawingGameTest(unittest.TestCase):
         self.assertEqual(self.host.post('/api/drawing/advance', json={'round': 2, 'phase': 'drawing'}).status_code, 200)
         self.assertEqual(self.phase(), 'voting')
 
+    def test_vote_progress_counts_only_players_with_something_to_vote_for(self):
+        self.start_drawing()
+        a, b, c = self.players
+        a.post('/api/drawing/submit', json={'round': 1, 'image': PNG})
+        self.assertEqual(self.host.post('/api/drawing/advance', json={'round': 1, 'phase': 'drawing'}).status_code, 200)
+        state = self.host.get('/api/drawing/current').get_json()
+        # The only picture is A's, so A has nothing to vote for.
+        self.assertEqual((state['votes_count'], state['voters_count']), (0, 2))
+        work = state['drawings'][0]['id']
+        self.assertEqual(b.post('/api/drawing/vote', json={'round': 1, 'drawing_id': work}).status_code, 200)
+        self.assertEqual(b.get('/api/drawing/current').get_json()['voted_for'], work)
+        self.assertIsNone(c.get('/api/drawing/current').get_json()['voted_for'])
+        conn = server.get_db()
+        stale = (datetime.now() - timedelta(seconds=drawing.PRESENCE_WINDOW_SECONDS + 5)).isoformat(timespec='seconds')
+        conn.execute("UPDATE room_participants SET last_seen_at = ? WHERE display_name IN ('Player 1', 'Player 2')", (stale,))
+        conn.commit(); conn.close()
+        # B went offline after voting and still counts; C stops being waited for.
+        state = self.host.get('/api/drawing/current').get_json()
+        self.assertEqual((state['votes_count'], state['voters_count']), (1, 1))
+
     def test_rooms_saved_without_time_limit_use_the_default(self):
         conn = server.get_db()
         conn.execute('UPDATE rooms SET settings_json = ? WHERE id = ?', (json.dumps({'drawing': {'rounds': 1, 'prompts': ['old']}}), self.room_id))

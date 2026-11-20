@@ -100,6 +100,18 @@ def drawing_time_left(config):
     return (datetime.fromisoformat(config["ends_at"]) - datetime.now()).total_seconds()
 
 
+def online_participants(conn, room_id):
+    """Participants seen within the presence window who have not left."""
+    online_since = datetime.now() - timedelta(seconds=PRESENCE_WINDOW_SECONDS)
+    return {
+        row["id"] for row in conn.execute(
+            "SELECT id, last_seen_at FROM room_participants WHERE room_id = ? AND left_at IS NULL",
+            (room_id,),
+        ).fetchall()
+        if datetime.fromisoformat(row["last_seen_at"]) >= online_since
+    }
+
+
 def round_progress(conn, activity, config):
     """Who has submitted this round, and who the round is still waiting for.
 
@@ -113,15 +125,24 @@ def round_progress(conn, activity, config):
             (activity["id"], config["round"]),
         ).fetchall()
     }
-    online_since = datetime.now() - timedelta(seconds=PRESENCE_WINDOW_SECONDS)
-    online = {
-        row["id"] for row in conn.execute(
-            "SELECT id, last_seen_at FROM room_participants WHERE room_id = ? AND left_at IS NULL",
-            (activity["room_id"],),
+    return submitted, online_participants(conn, activity["room_id"]) | submitted
+
+
+def vote_progress(conn, activity, config, authors):
+    """Who has voted this round, and who could vote at all.
+
+    Same presence rule as round_progress. A participant counts as a voter
+    only if the round has someone else's work to vote for.
+    """
+    voted = {
+        row["voter_id"] for row in conn.execute(
+            "SELECT voter_id FROM drawing_votes WHERE activity_id = ? AND round_number = ?",
+            (activity["id"], config["round"]),
         ).fetchall()
-        if datetime.fromisoformat(row["last_seen_at"]) >= online_since
     }
-    return submitted, online | submitted
+    authors = set(authors)
+    eligible = {pid for pid in online_participants(conn, activity["room_id"]) if authors - {pid}}
+    return voted, eligible | voted
 
 
 def ready_for_voting(conn, activity, config):
@@ -246,9 +267,14 @@ def state(conn, activity, participant, is_host):
         result['expected_count'] = len(expected)
     if phase == 'voting':
         vote = conn.execute('SELECT drawing_id FROM drawing_votes WHERE activity_id = ? AND round_number = ? AND voter_id = ?', (activity['id'], number, voter_id)).fetchone()
+        works = [row for row in rows if row['round_number'] == number]
         result['voted'] = bool(vote)
-        result['drawings'] = [{'id': row['id'], 'url': url_for('drawing.image', token=row['share_token']), 'own': row['participant_id'] == voter_id} for row in rows if row['round_number'] == number]
+        result['voted_for'] = vote['drawing_id'] if vote else None
+        result['drawings'] = [{'id': row['id'], 'url': url_for('drawing.image', token=row['share_token']), 'own': row['participant_id'] == voter_id} for row in works]
         result['can_vote'] = bool(voter_id and not vote and any(not work['own'] for work in result['drawings']))
+        voted, voters = vote_progress(conn, activity, config, [row['participant_id'] for row in works])
+        result['votes_count'] = len(voted)
+        result['voters_count'] = len(voters)
     elif phase == 'results':
         counts = conn.execute('SELECT drawing_id, COUNT(*) AS n FROM drawing_votes WHERE activity_id = ? GROUP BY drawing_id', (activity['id'],)).fetchall()
         votes = {r['drawing_id']: r['n'] for r in counts}

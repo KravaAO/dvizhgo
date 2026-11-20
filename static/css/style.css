@@ -1418,7 +1418,6 @@ th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spa
 .drawing-button,.drawing-tool { display:inline-block; border:2px solid var(--ink); padding:12px 16px; background:var(--signal); color:var(--ink); font-weight:900; font-size:14px; cursor:pointer; text-decoration:none; }
 .drawing-tool { background:var(--chalk); }
 .drawing-button:disabled { opacity:.6; cursor:not-allowed; }
-.drawing-host-action { display:block; margin-top:32px; }
 .drawing-gallery { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:18px; margin:24px 0; }
 .drawing-card { display:flex; flex-direction:column; align-items:flex-start; gap:10px; padding:12px; background:var(--chalk); border:2px solid var(--ink); }
 .drawing-card img { width:100%; aspect-ratio:1/1; object-fit:contain; background:#fff; border:1px solid var(--ink); }
@@ -1429,7 +1428,6 @@ th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spa
 .drawing-progress span { font:900 14px/1 "Courier New",monospace; letter-spacing:.08em; text-transform:uppercase; }
 .drawing-progress-bar { grid-column:1/-1; height:18px; margin-top:14px; border:2px solid var(--ink); background:var(--chalk); }
 .drawing-progress-bar i { display:block; width:0; height:100%; background:var(--signal); transition:width .3s ease; }
-.drawing-content .drawing-host-action.drawing-tool { background:var(--chalk); }
 
 /* Drawing workspace: a square field that always fits the viewport. */
 .drawing-page--workspace .drawing-main { max-width:none; margin:0; padding:0; }
@@ -1478,6 +1476,58 @@ th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spa
 .draw-opacity input { width:100%; accent-color:var(--ink); }
 .drawing-content { min-width:0; }
 
+/* Waiting, voting and results: a sticky bar with the host's next step on the
+   right, the screen's content in a centred column below it. */
+.drawing-page--stage .drawing-main { max-width:none; margin:0; padding:0; }
+.drawing-stagebar { position:sticky; top:0; z-index:20; }
+.drawing-page--stage .drawing-content { max-width:1100px; margin:0 auto; padding:28px clamp(14px,3vw,40px) 80px; }
+.drawing-page--stage .drawing-content > p:first-child { margin-top:0; }
+.drawing-host-action { flex:none; white-space:nowrap; box-shadow:4px 4px 0 var(--ink); }
+.drawing-host-action:hover:not(:disabled) { transform:translate(-2px,-2px); box-shadow:6px 6px 0 var(--ink); }
+.drawing-host-action .label-short { display:none; }
+.drawing-host-action.is-ready { animation:drawingReady 1.2s ease-in-out infinite; }
+@keyframes drawingReady { 50% { box-shadow:4px 4px 0 var(--ink),0 0 0 6px var(--mustard); } }
+
+.drawing-vote-status { display:flex; flex-wrap:wrap; align-items:center; gap:14px 32px; }
+.drawing-progress--compact { flex:0 1 360px; margin:0; }
+.drawing-progress--compact strong { font-size:48px; }
+.drawing-progress--compact .drawing-progress-bar { height:12px; margin-top:8px; }
+.drawing-main .drawing-vote-hint { flex:1 1 260px; margin:0; font-size:17px; font-weight:700; }
+.drawing-card { transition:opacity .2s ease; }
+.drawing-card-image { display:block; width:100%; padding:0; border:0; background:none; cursor:zoom-in; }
+.drawing-card-image img { display:block; }
+.drawing-card-image:focus-visible { outline:3px solid var(--signal); outline-offset:3px; }
+.drawing-card-foot { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:6px 8px; width:100%; }
+.drawing-card .drawing-badge { padding:4px 7px; border:2px solid var(--ink); background:var(--paper); font:900 11px/1 "Courier New",monospace; letter-spacing:.06em; text-transform:uppercase; }
+.drawing-card .drawing-badge--vote { background:var(--signal); }
+.drawing-card.is-own { border-style:dashed; background:var(--paper); }
+.drawing-card.is-voted { box-shadow:7px 7px 0 var(--signal); }
+.drawing-card.is-dimmed { opacity:.5; }
+.drawing-card.is-dimmed:hover,.drawing-card.is-dimmed:focus-within { opacity:1; }
+.drawing-vote-button { width:100%; box-shadow:4px 4px 0 var(--ink); }
+.drawing-vote-button:hover:not(:disabled) { transform:translate(-2px,-2px); box-shadow:6px 6px 0 var(--ink); }
+.drawing-card-links { display:flex; flex-wrap:wrap; gap:8px; }
+
+/* Full-screen picture viewer. */
+.drawing-viewer-open { overflow:hidden; }
+.drawing-viewer { position:fixed; inset:0; z-index:250; display:grid; grid-template-columns:56px minmax(0,1fr) 56px; grid-template-rows:auto minmax(0,1fr) auto; grid-template-areas:". . close" "prev fig next" ". act ."; align-items:center; gap:12px; padding:16px; background:rgba(23,23,20,.92); color:var(--chalk); }
+.drawing-viewer figure { grid-area:fig; display:grid; justify-items:center; gap:12px; margin:0; min-height:0; touch-action:pan-y; }
+.drawing-viewer img { display:block; width:min(100%,calc(100vh - 200px)); width:min(100%,calc(100dvh - 200px)); aspect-ratio:1/1; object-fit:contain; background:#fff; border:3px solid var(--chalk); box-shadow:8px 8px 0 var(--signal); user-select:none; }
+.drawing-viewer figcaption { font:900 13px/1.3 "Courier New",monospace; letter-spacing:.08em; text-align:center; text-transform:uppercase; }
+.drawing-viewer button { cursor:pointer; }
+.drawing-viewer-close { grid-area:close; justify-self:end; width:44px; height:44px; border:2px solid var(--chalk); background:transparent; color:var(--chalk); font-size:20px; }
+.drawing-viewer-nav { width:56px; height:56px; border:2px solid var(--chalk); background:var(--chalk); color:var(--ink); font-size:24px; font-weight:900; }
+.drawing-viewer-prev { grid-area:prev; }
+.drawing-viewer-next { grid-area:next; }
+.drawing-viewer-nav:hover,.drawing-viewer-close:hover { background:var(--mustard); color:var(--ink); }
+.drawing-viewer-nav[hidden] { display:none; }
+.drawing-viewer-close:focus-visible,.drawing-viewer-nav:focus-visible { outline:3px solid var(--signal); outline-offset:2px; }
+.drawing-viewer-actions { grid-area:act; display:flex; justify-content:center; min-height:0; }
+.drawing-viewer-actions .drawing-vote-button { width:auto; min-width:min(320px,100%); }
+@media (prefers-reduced-motion:reduce) {
+    .drawing-host-action.is-ready { animation:none; }
+}
+
 @media (max-width:860px) {
     .draw-topbar { padding:10px 14px; }
     .drawing-main .draw-prompt h1 { font-size:21px; }
@@ -1509,6 +1559,20 @@ th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spa
     .draw-palette { padding:8px 10px; }
     .draw-opacity-name { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
     .draw-sizes .draw-tool-btn { width:34px; height:34px; }
+    .drawing-host-action { padding:10px 12px; font-size:13px; }
+    .drawing-host-action .label-long { display:none; }
+    .drawing-host-action .label-short { display:inline; }
+    .drawing-page--stage .drawing-content { padding-top:20px; }
+    .drawing-progress--compact strong { font-size:40px; }
+    .drawing-main .drawing-vote-hint { font-size:15px; }
+    .drawing-gallery--vote { grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+    .drawing-card { padding:8px; gap:8px; }
+    .drawing-card strong { font-size:14px; }
+    .drawing-vote-button { padding:10px 8px; font-size:13px; }
+    .drawing-viewer { grid-template-columns:56px minmax(0,1fr) 56px; grid-template-areas:". . close" "fig fig fig" "prev act next"; padding:12px; gap:10px; }
+    .drawing-viewer img { width:min(100%,calc(100vh - 210px)); width:min(100%,calc(100dvh - 210px)); box-shadow:5px 5px 0 var(--signal); }
+    .drawing-viewer-nav { width:52px; height:52px; }
+    .drawing-viewer-actions .drawing-vote-button { min-width:0; }
 }
 @media (max-width: 359px) {
     .drawing-header { gap:8px; padding:0 10px; }
