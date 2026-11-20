@@ -27,9 +27,10 @@ Internet :443 -> KnowStack Nginx -> dvizhgo-web:5000 -> PostgreSQL / Redis
 
 ## Deploy
 
-1. Copy `deploy/nginx/dvizhgo.knowstack.space.conf` into
-   `C:\Users\artem\Documents\knowstack\nginx\nginx.conf` after the existing
-   KommoAI blocks.
+1. Add the contents of `deploy/nginx/dvizhgo.knowstack.space.conf` to
+   `C:\Users\artem\Documents\knowstack\nginx\nginx.conf` inside its `http { }`
+   context, after the existing KommoAI blocks. The snippet includes a `map`
+   for WebSocket connections, which must stay in the `http` context.
 2. Validate and reload Nginx before starting the new stack:
 
    ```powershell
