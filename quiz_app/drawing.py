@@ -566,17 +566,32 @@ def advance():
 def image(token):
     conn = api().get_db()
     row = conn.execute('SELECT * FROM drawings WHERE share_token = ? AND expires_at > ?', (token, now_iso())).fetchone()
+    unpublished = False
     if row:
         activity = get_activity(conn, row['activity_id'])
         config = json.loads(activity['config_json']) if activity else None
         participant, host = identity(conn)
+        unpublished = bool(config and config.get('phase') == 'drawing' and config.get('round') == row['round_number'])
         # During the drawing phase only the artist can view their unpublished work.
-        if config and config.get('phase') == 'drawing' and config.get('round') == row['round_number'] and not (participant and participant['id'] == row['participant_id']):
+        if unpublished and not (participant and participant['id'] == row['participant_id']):
             row = None
     conn.close()
     if not row:
-        return '', 404
+        # Never cache a miss: the picture becomes visible once voting opens.
+        return '', 404, {'Cache-Control': 'no-store'}
     response = Response(base64.b64decode(row['image'].split(',', 1)[1]), mimetype='image/png')
-    response.headers['Cache-Control'] = 'no-store'
+    response.headers['Cache-Control'] = image_cache_control(row['expires_at'], unpublished)
     response.headers['X-Content-Type-Options'] = 'nosniff'
     return response
+
+
+def image_cache_control(expires_at, unpublished):
+    """A submitted picture never changes, so once everyone may see it the
+    browser can keep it until the share link expires instead of downloading
+    it again on every render of the voting and results screens."""
+    if unpublished:
+        return 'no-store'
+    seconds = int((datetime.fromisoformat(expires_at) - datetime.now()).total_seconds())
+    if seconds <= 0:
+        return 'no-store'
+    return f'private, max-age={seconds}, immutable'

@@ -100,6 +100,29 @@ class DrawingGameTest(unittest.TestCase):
         self.assertEqual(conn.execute('SELECT COUNT(*) AS n FROM drawing_votes').fetchone()['n'], 0)
         conn.close()
 
+    def test_published_pictures_are_cached_until_the_link_expires(self):
+        host = self.host
+        a, b, _ = self.players
+        host.post('/api/drawing/settings', json={'rounds':1,'prompts':['one']})
+        host.post('/api/drawing/start')
+        self.assertEqual(a.post('/api/drawing/submit', json={'round':1,'image':PNG}).status_code, 200)
+        conn = server.get_db()
+        link = '/drawings/%s.png' % conn.execute('SELECT share_token FROM drawings').fetchone()['share_token']
+        conn.close()
+        # Still drawing: the artist sees it uncached, everyone else gets an uncached 404.
+        own = a.get(link)
+        self.assertEqual((own.status_code, own.headers['Cache-Control']), (200, 'no-store'))
+        hidden = b.get(link)
+        self.assertEqual((hidden.status_code, hidden.headers['Cache-Control']), (404, 'no-store'))
+        self.assertEqual(host.post('/api/drawing/advance', json={'round':1,'phase':'drawing'}).status_code, 200)
+        published = b.get(link)
+        self.assertEqual(published.status_code, 200)
+        cache = published.headers['Cache-Control']
+        self.assertTrue(cache.startswith('private, max-age=') and cache.endswith(', immutable'), cache)
+        max_age = int(cache.split('max-age=')[1].split(',')[0])
+        self.assertTrue(7 * 86400 - 60 <= max_age <= 7 * 86400, max_age)
+        self.assertEqual(drawing.image_cache_control((datetime.now() - timedelta(seconds=5)).isoformat(), False), 'no-store')
+
     def set_round_deadline(self, seconds_from_now):
         conn = server.get_db()
         row = conn.execute("SELECT id, config_json FROM activities WHERE type = 'drawing' AND status = 'active'").fetchone()
