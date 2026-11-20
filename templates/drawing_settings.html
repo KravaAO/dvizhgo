@@ -5,10 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Теми Малювалки · {{ room.title }}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="{{ url_for('static', filename='js/page-transitions.js') }}"></script>
 </head>
 <body class="dv-quiz-builder-page">
     <header class="dv-quiz-builder-header">
-        <a class="dv-host-brand" href="{{ url_for('host_lobby') }}" aria-label="DvizhGO · лобі">Dvizh<span>GO</span></a>
+        <a class="dv-quiz-builder-brand" href="{{ url_for('host_lobby') }}" aria-label="DvizhGO · лобі"><img src="{{ url_for('static', filename='images/gologo.png') }}" alt="DvizhGO"></a>
         <div class="dv-quiz-builder-room"><span>КІМНАТА / {{ room.code }}</span><strong>{{ room.title }}</strong></div>
         <div class="dv-quiz-builder-actions"><a href="{{ url_for('host_lobby') }}">← Назад у лобі</a></div>
     </header>

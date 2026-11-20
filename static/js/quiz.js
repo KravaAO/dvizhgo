@@ -420,9 +420,7 @@ function goToNextQuestion() {
     stopActiveSound();
     stopRain();
     card.classList.add("leaving");
-    setTimeout(() => {
-        window.location.href = nextUrl;
-    }, 340);
+    window.dvNavigate(nextUrl);
 }
 
 function showReaction(message) {
@@ -503,9 +501,7 @@ async function submitAnswer() {
 
         setTimeout(() => {
             card.classList.add("leaving");
-            setTimeout(() => {
-                window.location.href = data.finished ? "/result" : "/quiz";
-            }, 340);
+            window.dvNavigate(data.finished ? "/result" : "/quiz");
         }, 1050);
 
     } catch (error) {
@@ -539,12 +535,12 @@ function markWrongAndCorrect(correctIndexes) {
 
 connectRoomSocket({
     state(state) {
-        if (state.activity_type === 'drawing') { window.location.href = '/drawing'; return; }
+        if (state.activity_type === 'drawing') { window.dvNavigate('/drawing'); return; }
         if (['duel', 'flash_question'].includes(state.activity_type)) {
-            window.location.href = '/activity';
+            window.dvNavigate('/activity');
             return;
         }
-        if (!state.activity_type && state.room_status === 'lobby') window.location.href = '/lobby';
+        if (!state.activity_type && state.room_status === 'lobby') window.dvNavigate('/lobby');
     },
-    duel() { window.location.href = '/activity'; },
+    duel() { window.dvNavigate('/activity'); },
 });

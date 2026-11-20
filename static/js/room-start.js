@@ -6,18 +6,23 @@ async function launchRoomActivity(button, roomMode) {
             button.textContent = `Старт через ${seconds}…`;
             await new Promise(resolve => setTimeout(resolve, 1000));
         }
-        const response = await fetch(button.dataset.startUrl, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({expected_room_mode: roomMode}),
-        });
+        let response;
+        try {
+            response = await fetch(button.dataset.startUrl, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({expected_room_mode: roomMode}),
+            });
+        } catch {
+            throw new Error('Не вдалося з’єднатися із сервером. Перевірте з’єднання та спробуйте ще раз.');
+        }
         const data = await response.json().catch(() => ({}));
         if (!response.ok) {
             const error = new Error(data.error || 'Не вдалося розпочати активність.');
             error.roomMode = data.room_mode;
             throw error;
         }
-        window.location.assign(data.redirect_url);
+        window.dvNavigate(data.redirect_url);
     } catch (error) {
         button.textContent = label;
         button.disabled = false;

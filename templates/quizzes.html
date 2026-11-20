@@ -5,12 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Квізи · {{ room.title }}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="{{ url_for('static', filename='js/page-transitions.js') }}"></script>
     <script src="{{ url_for('static', filename='js/toast.js') }}"></script>
     <script src="{{ url_for('static', filename='js/room-start.js') }}" defer></script>
 </head>
 <body class="dv-quiz-builder-page">
     <header class="dv-quiz-builder-header">
-        <a class="dv-host-brand" href="{{ url_for('admin') }}" aria-label="DvizhGO · адмінка">Dvizh<span>GO</span></a>
+        <a class="dv-quiz-builder-brand" href="{{ url_for('admin') }}" aria-label="DvizhGO · адмінка"><img src="{{ url_for('static', filename='images/gologo.png') }}" alt="DvizhGO"></a>
         <div class="dv-quiz-builder-room"><span>КІМНАТА / {{ room.code }}</span><strong>{{ room.title }}</strong></div>
         <div class="dv-quiz-builder-actions">
             <a id="quizLobbyLink" href="{{ url_for('host_lobby') }}">{{ '← Змінити режим у лобі' if room_mode == 'drawing' else '← Назад у лобі' }}</a>
@@ -19,6 +20,10 @@
     </header>
 
     <main class="dv-quiz-builder-shell">
+        <section class="dv-quiz-builder-intro" aria-labelledby="quiz-builder-title">
+            <div><p class="dv-host-micro">ПІДГОТОВКА КІМНАТИ</p><h1 id="quiz-builder-title">Оберіть квіз<br>для групи.</h1><p>Виберіть готовий набір або створіть свій — ви зможете перевірити кожне питання перед запуском.</p></div>
+            <div class="dv-quiz-builder-intro-note"><span>СПОЧАТКУ</span><strong>Оберіть або створіть квіз</strong><p>Потім поверніться в лобі та запустіть його для учасників.</p></div>
+        </section>
         <section class="dv-builder-panel dv-builder-library">
             <div class="roulette-admin-head">
                 <div>
@@ -26,7 +31,7 @@
                     <p class="microcopy">Активний квіз отримають нові учасники, які приєднаються до кімнати.</p>
                 </div>
             </div>
-            <div id="quizLibrary" class="quiz-library"></div>
+            <div id="quizLibrary" class="quiz-library" aria-live="polite"></div>
         </section>
 
         <section class="dv-builder-panel dv-builder-ai">
@@ -193,7 +198,7 @@
         library.innerHTML = items.map(quiz => `
             <article class="quiz-library-item ${quiz.active ? 'active-quiz' : ''}">
                 <div><strong>${escapeHtml(quiz.title)}</strong><span>${quiz.count} питань${quiz.active ? ' · активний' : ''}</span></div>
-                ${quiz.active ? '<span class="status-pill done">Активний</span>' : `<button class="secondary-btn" data-quiz-id="${quiz.id ?? 'default'}">Обрати</button>`}
+                ${quiz.active ? '<span class="quiz-active-badge">Активний</span>' : `<button class="secondary-btn" data-quiz-id="${quiz.id ?? 'default'}">Обрати</button>`}
             </article>`).join('');
         library.querySelectorAll('[data-quiz-id]').forEach(button => button.addEventListener('click', () => activateQuiz(button.dataset.quizId)));
     }

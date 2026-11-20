@@ -67,7 +67,7 @@
     async function refresh() {
         try {
             const response = await fetch('/api/drawing/current', {cache:'no-store'});
-            if (response.status === 404) { window.location.href = '/lobby'; return; }
+            if (response.status === 404) { window.dvNavigate('/lobby'); return; }
             if (!response.ok) return;
             const next = await response.json();
             // The round can close a moment before this screen's own clock
@@ -537,7 +537,7 @@
         else renderResults(stage('ФІНАЛ', 'Ось наші переможці!'));
         updateProgress();
     }
-    connectRoomSocket({drawing:refresh, state(s) { if (s.activity_type !== 'drawing') window.location.href = '/lobby'; }});
+    connectRoomSocket({drawing:refresh, state(s) { if (s.activity_type !== 'drawing') window.dvNavigate('/lobby'); }});
     refresh(); setInterval(refresh, 5000); setInterval(tick, 250); setInterval(saveDraft, AUTOSAVE_MS);
     // Leaving or switching away: store the latest picture straight away.
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveDraft({keepalive:true}); });

@@ -62,7 +62,7 @@ function updateFlashTimer() {
 
 function renderFlash(flash, nextActivityType = null) {
     if (!flash) {
-        window.location.href = nextActivityType === 'quiz' ? '/quiz' : '/lobby';
+        window.dvNavigate(nextActivityType === 'quiz' ? '/quiz' : '/lobby');
         return;
     }
     currentFlash = flash;
@@ -124,7 +124,7 @@ async function pollFlash() {
 window.setInterval(updateFlashTimer, 250);
 
 connectRoomSocket({
-    state(state) { if (state.activity_type !== 'flash_question') window.location.href = state.activity_type === 'quiz' ? '/quiz' : '/lobby'; },
+    state(state) { if (state.activity_type !== 'flash_question') window.dvNavigate(state.activity_type === 'quiz' ? '/quiz' : '/lobby'); },
     presence() { pollFlash().catch(() => {}); },
     flash_question_updated() { pollFlash(); },
 });

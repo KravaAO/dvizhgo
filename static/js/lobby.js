@@ -401,9 +401,9 @@ async function pollLobby() {
         const data = await response.json();
         clockOffset = Date.parse(data.server_time) - Date.now();
         viewerId = data.viewer_id;
-        if (data.current_activity_type === 'drawing') { window.location.href = '/drawing'; return; }
-        if (['duel', 'flash_question'].includes(data.current_activity_type) && !isHost) { window.location.href = '/activity'; return; }
-        if (data.status === 'active' && data.has_active_attempt && !isHost) { window.location.href = '/quiz'; return; }
+        if (data.current_activity_type === 'drawing') { window.dvNavigate('/drawing'); return; }
+        if (['duel', 'flash_question'].includes(data.current_activity_type) && !isHost) { window.dvNavigate('/activity'); return; }
+        if (data.status === 'active' && data.has_active_attempt && !isHost) { window.dvNavigate('/quiz'); return; }
         resetScene(data.participants, data.boosts);
         const currentParticipant = data.participants.find(participant => String(participant.id) === String(viewerId));
         if (currentParticipant) updateAvatarPicker(currentParticipant.appearance);
@@ -540,17 +540,17 @@ if (removeHeadwearButton) {
 
 connectRoomSocket({
     state(state) {
-        if (state.activity_type === 'drawing') { window.location.href = '/drawing'; return; }
+        if (state.activity_type === 'drawing') { window.dvNavigate('/drawing'); return; }
         if (isHost && state.room_status !== 'lobby') {
-            window.location.href = '/admin';
+            window.dvNavigate('/admin');
             return;
         }
         if (!isHost && ['duel', 'flash_question'].includes(state.activity_type)) {
-            window.location.href = '/activity';
+            window.dvNavigate('/activity');
             return;
         }
         if (!isHost && state.activity_type === 'quiz' && state.activity_status === 'active') {
-            window.location.href = '/quiz';
+            window.dvNavigate('/quiz');
             return;
         }
         pollLobby();
