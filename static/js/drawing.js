@@ -2,6 +2,7 @@
     const root = document.getElementById('drawingContent');
     const progress = document.getElementById('drawingProgress');
     const timer = document.getElementById('drawingTimer');
+    const sound = createCountdownSound(document.getElementById('drawingSound'));
     const isHost = document.body.dataset.host === 'true';
     // Values that change on every poll; they update in place instead of
     // rebuilding the screen.
@@ -12,6 +13,8 @@
     let board = null, boardRound = null;
     // Deadline on the monotonic clock; the server only sends "ms left".
     let deadlineAt = null, timeUpRound = null, lateRefreshRound = null;
+    // Seconds whose countdown cue already sounded, reset every round.
+    let cueRound = null, cuedSeconds = new Set();
 
     const el = (tag, text, cls) => { const node = document.createElement(tag); if (text !== undefined) node.textContent = text; if (cls) node.className = cls; return node; };
     async function send(url, body = {}) {
@@ -36,6 +39,11 @@
             if (response.status === 404) { window.location.href = '/lobby'; return; }
             if (!response.ok) return;
             const next = await response.json();
+            // The round can close a moment before this screen's own clock
+            // reaches zero (the last drawer auto-submitted); still buzz.
+            const closedAtDeadline = state && state.phase === 'drawing' && next.phase !== 'drawing'
+                && next.round === state.round && deadlineAt !== null && deadlineAt - performance.now() < 1500;
+            if (closedAtDeadline) countdownCue(0);
             state = next;
             deadlineAt = typeof next.time_left_ms === 'number' ? performance.now() + next.time_left_ms : null;
             const key = renderKey(next);
@@ -118,6 +126,24 @@
         return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
     }
 
+    // Chime at 10 s, tick through the last 5 s, buzz at zero. Only people
+    // still drawing hear it, plus the host screen that the room watches.
+    function countdownCue(remaining) {
+        if (!isHost && (state.submitted || timeUpRound === state.round)) return;
+        if (cueRound !== state.round) { cueRound = state.round; cuedSeconds = new Set(); }
+        const second = Math.ceil(remaining / 1000);
+        let cue = null;
+        if (second === 10) cue = 'warning';
+        else if (second >= 2 && second <= 5) cue = 'tick';
+        else if (second === 1) cue = 'lastTick';
+        // Only right at the deadline, never on a page opened after it.
+        else if (second <= 0 && remaining > -1000) cue = 'end';
+        const key = Math.max(0, second);
+        if (!cue || cuedSeconds.has(key)) return;
+        cuedSeconds.add(key);
+        sound.play(cue);
+    }
+
     function tick() {
         const remaining = deadlineAt === null ? null : deadlineAt - performance.now();
         const counting = state && state.phase === 'drawing' && remaining !== null;
@@ -126,6 +152,7 @@
         if (!counting) return;
         timer.textContent = `⏱ ${formatTime(remaining)}`;
         timer.classList.toggle('urgent', remaining <= 10000);
+        countdownCue(remaining);
         if (remaining <= 0 && !isHost && !state.submitted && board && timeUpRound !== state.round) handleTimeUp();
         // Once the grace window has passed, ask the server to close the round.
         if (remaining <= -(state.submit_grace_ms + 500) && lateRefreshRound !== state.round) {
