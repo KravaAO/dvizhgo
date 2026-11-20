@@ -5,17 +5,19 @@
     <title>DvizhGO — живі квізи для груп</title>
     <meta name="description" content="Створіть кімнату, підготуйте квіз і проведіть живу активність для своєї групи.">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="{{ url_for('static', filename='js/page-transitions.js') }}"></script>
     <script src="{{ url_for('static', filename='js/toast.js') }}"></script>
 </head>
 <body class="dv-menu">
 {% if error %}<span data-toast-message="{{ error }}" data-toast-type="error"></span>{% endif %}
 <div class="dv-page">
-    <header class="dv-header"><div class="dv-logo"><img class="dv-brand-image" src="{{ url_for('static', filename='images/gologo.png') }}" alt="DvizhGO"></div><nav><a href="{{ url_for('index') }}" aria-current="page">Головна</a><a href="{{ url_for('how_it_works') }}">Як це працює</a></nav><div class="dv-live">● LIVE</div></header>
+    <header class="dv-header"><a class="dv-logo" href="{{ url_for('index') }}" aria-label="DvizhGO — головна"><img class="dv-brand-image" src="{{ url_for('static', filename='images/gologo.png') }}" alt="DvizhGO"></a><nav><a href="{{ url_for('index') }}" aria-current="page">Головна</a><a href="{{ url_for('how_it_works') }}">Як це працює</a></nav><div class="dv-live">● LIVE</div></header>
     <main class="dv-main">
-        <section class="dv-visual"><div class="word">Dvizh<span class="go">GO</span></div></section>
+        <section class="dv-visual" aria-label="DvizhGO"><div class="dv-logo-transition"><img src="{{ url_for('static', filename='images/gologo.png') }}" alt="DvizhGO"></div></section>
         <section class="dv-actions">
             <button type="button" id="openJoin" class="dv-action">
                 <div class="dv-micro">01 / participant</div><h1>Увійти<br>в кімнату</h1>
+                <p>Введіть код кімнати та своє ім’я.</p>
                 <span class="dv-action-arrow">→</span>
             </button>
             <button type="button" id="openCreate" class="dv-action dv-create">
@@ -38,8 +40,22 @@ document.querySelectorAll('.dv-action').forEach(action => {
     action.addEventListener('pointerleave', () => action.classList.remove('is-pressed'));
 });
 const panel=document.getElementById('accessPanel'), join=document.getElementById('joinPanel'), create=document.getElementById('createPanel');
-function openPanel(kind){ panel.classList.add('open'); panel.setAttribute('aria-hidden','false'); join.classList.toggle('hidden',kind!=='join'); create.classList.toggle('hidden',kind!=='create'); document.getElementById('panelKicker').textContent=kind==='join'?'PARTICIPANT ACCESS':'ROOM HOST'; setTimeout(()=>panel.querySelector('input,button:not(#closeAccess)')?.focus(),180); }
+function openPanel(kind, focusTarget){ panel.classList.add('open'); panel.setAttribute('aria-hidden','false'); join.classList.toggle('hidden',kind!=='join'); create.classList.toggle('hidden',kind!=='create'); document.getElementById('panelKicker').textContent=kind==='join'?'PARTICIPANT ACCESS':'ROOM HOST'; setTimeout(()=> (focusTarget || panel.querySelector('input,button:not(#closeAccess)'))?.focus(),180); }
 document.getElementById('openJoin').onclick=()=>openPanel('join'); document.getElementById('openCreate').onclick=()=>openPanel('create'); document.getElementById('closeAccess').onclick=()=>{panel.classList.remove('open');panel.setAttribute('aria-hidden','true')};
+const inviteCode = new URLSearchParams(window.location.search).get('code')?.trim();
+if(inviteCode){ const nameInput=join.querySelector('input[name="name"]'); join.querySelector('input[name="code"]').value=inviteCode.toUpperCase(); openPanel('join',nameInput); }
+const logoAnimations = [
+    "{{ url_for('static', filename='animations/dvizhgo-logo-transition.html') }}",
+    "{{ url_for('static', filename='animations/dvizhgo-flat-to-3d.html') }}"
+];
+const logoMark = document.querySelector('.dv-logo-transition');
+const animation = document.createElement('iframe');
+animation.src = logoAnimations[Math.floor(Math.random() * logoAnimations.length)];
+animation.title = 'DvizhGO logo animation';
+animation.setAttribute('sandbox', 'allow-scripts');
+animation.setAttribute('aria-hidden', 'true');
+animation.tabIndex = -1;
+logoMark.replaceChildren(animation);
 </script>
 </body>
 </html>

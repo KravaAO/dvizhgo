@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin — контрольна</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="{{ url_for('static', filename='js/page-transitions.js') }}"></script>
     <script src="{{ url_for('static', filename='js/toast.js') }}"></script>
     <script src="{{ url_for('static', filename='js/leave-modal.js') }}"></script>
 </head>
@@ -521,7 +522,7 @@
                 showToast(data.error || 'Не вдалося завершити квіз.', { type: 'error' });
                 return;
             }
-            window.location.href = '/lobby/host';
+            window.dvNavigate('/lobby/host');
         });
     }
 

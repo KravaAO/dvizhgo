@@ -12,7 +12,7 @@
         modal.querySelector('.leave-cancel').focus();
         const close = () => modal.classList.remove('open');
         modal.querySelector('.leave-cancel').onclick = close;
-        modal.querySelector('.leave-confirm').onclick = () => { modal.remove(); form.submit(); };
+        modal.querySelector('.leave-confirm').onclick = () => { modal.remove(); window.dvSubmitForm(form); };
         modal.onclick = event => { if (event.target === modal) close(); };
     }
     document.addEventListener('DOMContentLoaded', () => {
