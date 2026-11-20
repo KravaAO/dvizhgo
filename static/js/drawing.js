@@ -17,10 +17,17 @@
     let cueRound = null, cuedSeconds = new Set();
     // The open full-screen picture viewer, if any.
     let viewer = null;
+    // Autosave: the board revision last stored on the server (null = none
+    // yet this round), whether the restore check has finished, and a save in
+    // flight. A changed picture is saved every few seconds.
+    const AUTOSAVE_MS = 3000;
+    // Browsers cap keepalive requests (sent while the tab hides) at 64 KB.
+    const KEEPALIVE_LIMIT = 60000;
+    let savedRevision = null, draftReady = false, draftSaving = false, saveStatus = '';
 
     const el = (tag, text, cls) => { const node = document.createElement(tag); if (text !== undefined) node.textContent = text; if (cls) node.className = cls; return node; };
-    async function send(url, body = {}) {
-        const response = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+    async function send(url, body = {}, {keepalive = false} = {}) {
+        const response = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body), keepalive});
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.error || 'Не вдалося виконати дію.');
         return data;
@@ -131,7 +138,7 @@
         const confirmed = await confirmDialog({
             title: 'Завершити малювання?',
             text: missing
-                ? `Ще малюють: ${missing}. Їхні роботи не потраплять у голосування цього раунду.`
+                ? `Ще малюють: ${missing}. У голосування потрапить те, що вони встигли намалювати.`
                 : 'Голосування відкриється одразу.',
             confirmLabel: 'Відкрити голосування',
         });
@@ -192,42 +199,108 @@
         }
     }
 
+    // Whatever is on the canvas goes in at time-up, a blank one included.
     async function handleTimeUp() {
         const round = state.round;
         timeUpRound = round;
         board.setDisabled(true);
-        if (board.isBlank()) {
-            showToast('Час вийшов. Порожнє полотно не надсилається.', {type:'info'});
-            render();
-            return;
-        }
+        const image = board.toPng();
+        const blank = board.isBlank();
         try {
-            await send('/api/drawing/submit', {round, image:board.toPng()});
-            showToast('Час вийшов — малюнок надіслано!', {type:'success'});
+            await send('/api/drawing/submit', {round, image, blank});
+            showToast(blank ? 'Час вийшов — надіслано порожнє полотно.' : 'Час вийшов — малюнок надіслано!', {type:'success'});
         } catch (error) {
+            // The last autosave still becomes the entry on the server.
             showToast(error.message, {type:'error'});
         }
         await refresh();
     }
 
     async function submitDrawing() {
-        if (board.isBlank()) throw new Error('Спочатку намалюйте щось на полотні.');
-        await update('/api/drawing/submit', {round:state.round, image:board.toPng()});
+        const image = board.toPng();
+        const blank = board.isBlank();
+        if (blank && !await confirmDialog({
+            title: 'Порожнє полотно?',
+            text: 'Його побачать інші учасники під час голосування. Змінити роботу після надсилання не можна.',
+            confirmLabel: 'Надіслати порожнє',
+        })) return;
+        await update('/api/drawing/submit', {round:state.round, image, blank});
+    }
+
+    // ---- Autosave -------------------------------------------------------
+    const SAVE_LABELS = {saving:'· ЗБЕРІГАЄМО…', saved:'· ЗБЕРЕЖЕНО ✓', error:'· НЕ ЗБЕРЕЖЕНО'};
+    function setSaveStatus(value) {
+        saveStatus = value;
+        root.querySelectorAll('.draw-autosave').forEach(node => {
+            node.textContent = SAVE_LABELS[value] || '';
+            node.dataset.state = value;
+        });
+    }
+
+    // A new round's board: bring back the autosaved picture after a reload,
+    // otherwise save the (blank) canvas at once, so having the page open is
+    // enough to take part in the round.
+    async function startDraft(round) {
+        savedRevision = null;
+        draftReady = false;
+        setSaveStatus('');
+        try {
+            const response = await fetch('/api/drawing/draft', {cache:'no-store'});
+            const data = response.ok ? await response.json() : null;
+            // Restore only into an untouched board of the same round.
+            if (data && data.image && data.round === round && boardRound === round && board.revision() === 0) {
+                await board.load(data.image);
+                savedRevision = 0;
+                setSaveStatus('saved');
+                showToast('Малюнок відновлено.', {type:'info'});
+            }
+        } catch (error) { console.error(error); }
+        if (boardRound !== round) return;
+        draftReady = true;
+        saveDraft();
+    }
+
+    async function saveDraft({keepalive = false} = {}) {
+        if (!board || !draftReady || draftSaving || !state || state.phase !== 'drawing' || boardRound !== state.round) return;
+        const revision = board.revision();
+        if (revision === savedRevision) return;
+        const round = boardRound;
+        const body = {round, image:board.draftPng(), blank:board.isBlank()};
+        draftSaving = true;
+        setSaveStatus('saving');
+        try {
+            const tooBig = JSON.stringify(body).length > KEEPALIVE_LIMIT;
+            await send('/api/drawing/draft', body, {keepalive: keepalive && !tooBig});
+            if (boardRound === round) { savedRevision = revision; setSaveStatus('saved'); }
+        } catch (error) {
+            if (boardRound === round) setSaveStatus('error');
+        } finally {
+            draftSaving = false;
+        }
     }
 
     function renderWorkspace() {
+        let fresh = false;
         if (!board || boardRound !== state.round) {
             dropBoard();
             board = createDrawingBoard();
             boardRound = state.round;
+            fresh = true;
         }
         const workspace = el('section', undefined, 'draw-workspace');
         const top = el('div', undefined, 'draw-topbar');
         const prompt = el('div', undefined, 'draw-prompt');
-        prompt.append(el('span', `РАУНД ${state.round} / ${state.rounds} · ТЕМА`, 'drawing-eyebrow'), el('h1', state.prompt));
+        const eyebrow = el('span', `РАУНД ${state.round} / ${state.rounds} · ТЕМА `, 'drawing-eyebrow');
+        const autosave = el('span', SAVE_LABELS[saveStatus] || '', 'draw-autosave');
+        autosave.dataset.state = saveStatus;
+        // Visual reassurance only; announcing it every few seconds would be noise.
+        autosave.setAttribute('aria-hidden', 'true');
+        eyebrow.append(autosave);
+        prompt.append(eyebrow, el('h1', state.prompt));
         top.append(prompt, button('Надіслати ✓', submitDrawing, 'drawing-button draw-submit'));
         workspace.append(top, board.element);
         root.append(workspace);
+        if (fresh) startDraft(state.round);
     }
 
     // A host button whose label shortens on phones; the full text stays
@@ -314,6 +387,7 @@
             img.src = work.url;
             img.alt = results ? `Малюнок: ${work.prompt}` : workLabel(current);
             const notes = results ? [work.author, `Раунд ${work.round}`, work.prompt] : [`${workLabel(current)} з ${works.length}`];
+            if (work.blank) notes.push('Порожнє полотно');
             if (!results && work.own) notes.push('Ваша робота');
             if (!results && state.voted_for === work.id) notes.push('★ Ваш голос');
             caption.textContent = notes.join(' · ');
@@ -381,10 +455,12 @@
             const voted = state.voted_for === work.id;
             const card = el('article', undefined, 'drawing-card');
             card.classList.toggle('is-own', work.own);
+            card.classList.toggle('is-blank', work.blank);
             card.classList.toggle('is-voted', voted);
             card.classList.toggle('is-dimmed', state.voted && !voted);
             const foot = el('div', undefined, 'drawing-card-foot');
             foot.append(el('strong', workLabel(i)));
+            if (work.blank) foot.append(el('span', 'Порожнє полотно', 'drawing-badge drawing-badge--blank'));
             if (work.own) foot.append(el('span', 'Ваша робота', 'drawing-badge'));
             if (voted) foot.append(el('span', '★ Ваш голос', 'drawing-badge drawing-badge--vote'));
             card.append(pictureButton(work.url, workLabel(i), () => openViewer(i)), foot);
@@ -401,11 +477,13 @@
         const grid = el('div', undefined, 'drawing-gallery');
         state.drawings.forEach((work, i) => {
             const card = el('article', undefined, 'drawing-card');
+            card.classList.toggle('is-blank', work.blank);
             const download = el('a', 'Завантажити', 'drawing-tool'); download.href = work.url; download.download = 'malyunok.png';
             const share = button('Скопіювати посилання', async () => { await navigator.clipboard.writeText(new URL(work.url, location.href).href); showToast('Посилання скопійовано.', {type:'success'}); }, 'drawing-tool');
             const links = el('div', undefined, 'drawing-card-links');
             links.append(download, share);
-            card.append(pictureButton(work.url, `Малюнок: ${work.prompt}`, () => openViewer(i)), el('strong', work.author), el('span', `Раунд ${work.round} · ${work.prompt}`), links);
+            const caption = `Раунд ${work.round} · ${work.prompt}${work.blank ? ' · порожнє полотно' : ''}`;
+            card.append(pictureButton(work.url, `Малюнок: ${work.prompt}`, () => openViewer(i)), el('strong', work.author), el('span', caption), links);
             grid.append(card);
         });
         body.append(grid);
@@ -428,5 +506,8 @@
         updateProgress();
     }
     connectRoomSocket({drawing:refresh, state(s) { if (s.activity_type !== 'drawing') window.location.href = '/lobby'; }});
-    refresh(); setInterval(refresh, 5000); setInterval(tick, 250);
+    refresh(); setInterval(refresh, 5000); setInterval(tick, 250); setInterval(saveDraft, AUTOSAVE_MS);
+    // Leaving or switching away: store the latest picture straight away.
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveDraft({keepalive:true}); });
+    window.addEventListener('pagehide', () => saveDraft({keepalive:true}));
 })();

@@ -1500,6 +1500,12 @@ th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spa
 .drawing-card-foot { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:6px 8px; width:100%; }
 .drawing-card .drawing-badge { padding:4px 7px; border:2px solid var(--ink); background:var(--paper); font:900 11px/1 "Courier New",monospace; letter-spacing:.06em; text-transform:uppercase; }
 .drawing-card .drawing-badge--vote { background:var(--signal); }
+.drawing-card .drawing-badge--blank { border-style:dashed; background:#fff; }
+.drawing-card.is-blank .drawing-card-image { position:relative; }
+.drawing-card.is-blank .drawing-card-image::after { content:"порожньо"; position:absolute; inset:0; display:grid; place-items:center; color:#b9b2a5; font:900 13px/1 "Courier New",monospace; letter-spacing:.14em; text-transform:uppercase; pointer-events:none; }
+.draw-autosave { color:var(--faded); white-space:nowrap; }
+.draw-autosave[data-state="saved"] { color:var(--petrol); }
+.draw-autosave[data-state="error"] { color:var(--signal); }
 .drawing-card.is-own { border-style:dashed; background:var(--paper); }
 .drawing-card.is-voted { box-shadow:7px 7px 0 var(--signal); }
 .drawing-card.is-dimmed { opacity:.5; }
@@ -1559,6 +1565,12 @@ th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spa
     .draw-palette { padding:8px 10px; }
     .draw-opacity-name { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
     .draw-sizes .draw-tool-btn { width:34px; height:34px; }
+    /* The autosave note shrinks to an icon so the bar stays one line. */
+    .draw-autosave { font-size:0; letter-spacing:0; }
+    .draw-autosave::after { font-size:11px; letter-spacing:.08em; }
+    .draw-autosave[data-state="saving"]::after { content:"· …"; }
+    .draw-autosave[data-state="saved"]::after { content:"· ✓"; }
+    .draw-autosave[data-state="error"]::after { content:"· ⚠"; }
     .drawing-host-action { padding:10px 12px; font-size:13px; }
     .drawing-host-action .label-long { display:none; }
     .drawing-host-action .label-short { display:inline; }

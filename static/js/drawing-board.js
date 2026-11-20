@@ -98,6 +98,9 @@
         let lastDrawingTool = 'pen';
         const undoStack = [];
         const redoStack = [];
+        // Bumped on every finished change; autosave compares it to the last
+        // saved value instead of diffing pixels.
+        let revision = 0;
 
         const element = el('div', 'draw-board');
         const toolbar = el('div', 'draw-toolbar');
@@ -256,6 +259,7 @@
             undoStack.push(snapshot());
             if (undoStack.length > HISTORY_LIMIT) undoStack.shift();
             redoStack.length = 0;
+            revision += 1;
             syncHistory();
         }
 
@@ -264,6 +268,7 @@
             cancelGesture();
             redoStack.push(snapshot());
             ctx.putImageData(undoStack.pop(), 0, 0);
+            revision += 1;
             syncHistory();
         }
 
@@ -272,6 +277,7 @@
             cancelGesture();
             undoStack.push(snapshot());
             ctx.putImageData(redoStack.pop(), 0, 0);
+            revision += 1;
             syncHistory();
         }
 
@@ -570,6 +576,16 @@
 
         function toPng() {
             finishGesture();
+            return exportPng();
+        }
+
+        // What is already on the canvas, leaving a stroke in progress alone:
+        // an autosave must never cut the player's line short.
+        function draftPng() {
+            return exportPng();
+        }
+
+        function exportPng() {
             const data = canvas.toDataURL('image/png');
             if (data.length <= MAX_DATA_URL_LENGTH) return data;
             // A very detailed picture can exceed the upload limit; a smaller
@@ -578,6 +594,25 @@
             smaller.width = smaller.height = 600;
             smaller.getContext('2d').drawImage(canvas, 0, 0, 600, 600);
             return smaller.toDataURL('image/png');
+        }
+
+        // Put an autosaved picture back after a reload. History starts fresh.
+        function load(dataUrl) {
+            return new Promise((resolve, reject) => {
+                const picture = new Image();
+                picture.onload = () => {
+                    cancelGesture();
+                    ctx.fillStyle = BACKGROUND;
+                    ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+                    ctx.drawImage(picture, 0, 0, CANVAS_SIZE, CANVAS_SIZE);
+                    undoStack.length = 0;
+                    redoStack.length = 0;
+                    syncHistory();
+                    resolve();
+                };
+                picture.onerror = () => reject(new Error('Не вдалося відновити малюнок.'));
+                picture.src = dataUrl;
+            });
         }
 
         function setDisabled(value) {
@@ -602,7 +637,7 @@
         syncHistory();
         cursor.hidden = true;
 
-        return {element, isBlank, toPng, finishGesture, setDisabled, destroy};
+        return {element, isBlank, toPng, draftPng, load, revision: () => revision, finishGesture, setDisabled, destroy};
     }
 
     window.createDrawingBoard = createDrawingBoard;
