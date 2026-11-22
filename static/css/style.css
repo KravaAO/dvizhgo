@@ -1641,6 +1641,8 @@ th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spa
 @media (max-width: 359px) {
     .drawing-header { gap:8px; padding:0 10px; }
     .drawing-header strong { font-size:14px; }
+}
+
 /* Public guide: make the seven-step sequence easy to scan and jump through. */
 .dv-guide-page main { min-width:0; }
 .dv-guide-index { display:grid; grid-template-columns:repeat(7,minmax(78px,1fr)); overflow-x:auto; border-bottom:2px solid var(--ink); background:var(--paper); }
