@@ -15,6 +15,7 @@ _cleanup_started = False
 
 TIME_LIMIT_OPTIONS = (30, 60, 90, 120, 180, 300)
 DEFAULT_TIME_LIMIT = 90
+MAX_ROUNDS = 30
 # Drawings that the browser auto-submits when the timer hits zero arrive a
 # moment after the deadline; they are still accepted inside this window.
 SUBMIT_GRACE_SECONDS = 5
@@ -71,25 +72,25 @@ def current(conn, room_id):
 
 
 def validated_settings(data):
+    """One round per prompt: the round count always follows the prompt list."""
     if not isinstance(data, dict):
         raise ValueError("Некоректні налаштування Малювалки.")
     prompts = data.get("prompts")
-    rounds = data.get("rounds", 3)
     time_limit = data.get("time_limit", DEFAULT_TIME_LIMIT)
     if not isinstance(prompts, list) or not all(isinstance(p, str) and 0 < len(p.strip()) <= 200 for p in prompts):
         raise ValueError("Додайте непорожні теми до 200 символів кожна.")
-    if isinstance(rounds, bool) or not isinstance(rounds, int) or not 1 <= rounds <= 30:
-        raise ValueError("Кількість раундів має бути від 1 до 30.")
-    if len(prompts) < rounds or len(prompts) > 30:
-        raise ValueError("Додайте окрему тему для кожного раунду (до 30 тем).")
+    if not 1 <= len(prompts) <= MAX_ROUNDS:
+        raise ValueError(f"Додайте від 1 до {MAX_ROUNDS} тем: кожна тема — окремий раунд.")
     if isinstance(time_limit, bool) or time_limit not in TIME_LIMIT_OPTIONS:
         raise ValueError("Оберіть час на малювання зі списку.")
-    return {"prompts": [p.strip() for p in prompts], "rounds": rounds, "time_limit": time_limit}
+    return {"prompts": [p.strip() for p in prompts], "rounds": len(prompts), "time_limit": time_limit}
 
 
 def saved_settings(room_settings):
     # Rooms saved before the time limit existed keep working with the default.
-    return {"rounds": 3, "prompts": [], "time_limit": DEFAULT_TIME_LIMIT, **room_settings.get("drawing", {})}
+    config = {"prompts": [], "time_limit": DEFAULT_TIME_LIMIT, **room_settings.get("drawing", {})}
+    config["rounds"] = len(config["prompts"])
+    return config
 
 
 def open_drawing_round(config):
@@ -244,7 +245,7 @@ def editor():
     if room['status'] != 'lobby':
         return redirect(url_for('admin'))
     config = saved_settings(json.loads(room['settings_json'] or '{}'))
-    return render_template('drawing_settings.html', room=room, config=config, time_limit_options=TIME_LIMIT_OPTIONS)
+    return render_template('drawing_settings.html', room=room, config=config, time_limit_options=TIME_LIMIT_OPTIONS, max_rounds=MAX_ROUNDS)
 
 
 @bp.route('/api/drawing/settings', methods=['GET', 'POST'])

@@ -51,8 +51,8 @@ class DrawingGameTest(unittest.TestCase):
     def test_rounds_voting_anonymity_sharing_and_expiry(self):
         host = self.host
         a, b, voter = self.players
-        self.assertEqual(host.post('/api/drawing/settings', json={'rounds':3,'prompts':['one']}).status_code, 400)
-        self.assertEqual(host.post('/api/drawing/settings', json={'rounds':2,'prompts':['one','two']}).status_code, 200)
+        self.assertEqual(host.post('/api/drawing/settings', json={'prompts':[]}).status_code, 400)
+        self.assertEqual(host.post('/api/drawing/settings', json={'prompts':['one','two']}).status_code, 200)
         self.assertEqual(host.post('/api/drawing/start').status_code, 200)
         self.assertTrue(a.get('/lobby').location.endswith('/drawing'))
         self.assertTrue(host.get('/admin').location.endswith('/drawing'))
@@ -103,7 +103,7 @@ class DrawingGameTest(unittest.TestCase):
     def test_published_pictures_are_cached_until_the_link_expires(self):
         host = self.host
         a, b, _ = self.players
-        host.post('/api/drawing/settings', json={'rounds':1,'prompts':['one']})
+        host.post('/api/drawing/settings', json={'prompts':['one']})
         host.post('/api/drawing/start')
         self.assertEqual(a.post('/api/drawing/submit', json={'round':1,'image':PNG}).status_code, 200)
         conn = server.get_db()
@@ -134,7 +134,7 @@ class DrawingGameTest(unittest.TestCase):
     def test_time_limit_is_validated_counted_down_and_enforced(self):
         host = self.host
         a, b, _ = self.players
-        base = {'rounds': 2, 'prompts': ['one', 'two']}
+        base = {'prompts': ['one', 'two']}
         for invalid in (45, 0, '60', True, 3600):
             self.assertEqual(host.post('/api/drawing/settings', json={**base, 'time_limit': invalid}).status_code, 400)
         saved = host.post('/api/drawing/settings', json={**base, 'time_limit': 30}).get_json()['settings']
@@ -170,7 +170,7 @@ class DrawingGameTest(unittest.TestCase):
 
     def start_drawing(self, rounds=2):
         prompts = ['one', 'two', 'three'][:rounds]
-        self.assertEqual(self.host.post('/api/drawing/settings', json={'rounds': rounds, 'prompts': prompts, 'time_limit': 60}).status_code, 200)
+        self.assertEqual(self.host.post('/api/drawing/settings', json={'prompts': prompts, 'time_limit': 60}).status_code, 200)
         self.assertEqual(self.host.post('/api/drawing/start').status_code, 200)
 
     def test_voting_opens_only_after_every_online_player_submitted(self):
@@ -298,9 +298,28 @@ class DrawingGameTest(unittest.TestCase):
         self.assertEqual(migrated.execute('SELECT is_blank FROM drawings').fetchone()[0], 0)
         migrated.close()
 
+    def test_round_count_follows_the_prompt_list(self):
+        host = self.host
+        saved = host.post('/api/drawing/settings', json={'rounds': 1, 'prompts': [' one ', 'two', 'three']}).get_json()['settings']
+        self.assertEqual(saved['rounds'], 3)
+        self.assertEqual(saved['prompts'], ['one', 'two', 'three'])
+        page = host.get('/admin/drawing').data.decode()
+        self.assertNotIn('name="rounds"', page)
+        self.assertIn('>3</output>', page)
+        self.assertIn('Раундів · 3 /', host.get('/lobby/host').data.decode())
+        too_many = [f'theme {n}' for n in range(drawing.MAX_ROUNDS + 1)]
+        self.assertEqual(host.post('/api/drawing/settings', json={'prompts': too_many}).status_code, 400)
+
+    def test_rooms_saved_with_a_stale_round_count_play_every_prompt(self):
+        conn = server.get_db()
+        conn.execute('UPDATE rooms SET settings_json = ? WHERE id = ?', (json.dumps({'drawing': {'rounds': 1, 'prompts': ['a', 'b']}}), self.room_id))
+        conn.commit(); conn.close()
+        self.assertEqual(self.host.post('/api/drawing/start').status_code, 200)
+        self.assertEqual(self.players[0].get('/api/drawing/current').get_json()['rounds'], 2)
+
     def test_rooms_saved_without_time_limit_use_the_default(self):
         conn = server.get_db()
-        conn.execute('UPDATE rooms SET settings_json = ? WHERE id = ?', (json.dumps({'drawing': {'rounds': 1, 'prompts': ['old']}}), self.room_id))
+        conn.execute('UPDATE rooms SET settings_json = ? WHERE id = ?', (json.dumps({'drawing': {'prompts': ['old']}}), self.room_id))
         conn.commit(); conn.close()
         self.assertIn('Час · 1:30'.encode(), self.host.get('/lobby/host').data)
         self.assertEqual(self.host.post('/api/drawing/start').status_code, 200)
@@ -342,11 +361,11 @@ class DrawingGameTest(unittest.TestCase):
         self.assertEqual(stale.status_code, 409)
         self.assertEqual(stale.get_json()['room_mode'], 'drawing')
         self.assertEqual(host.post('/api/lobby/start', json={'expected_room_mode':'drawing'}).status_code, 400)
-        config = {'rounds':1, 'prompts':['First', 'Extra']}
+        config = {'prompts':['First']}
         self.assertEqual(host.post('/api/drawing/settings', json=config).status_code, 200)
         for mode in ('quiz', 'drawing'):
             self.assertEqual(host.post('/api/lobby/room-mode', json={'room_mode':mode}).status_code, 200)
-        self.assertEqual(host.get('/api/drawing/settings').get_json()['settings'], {**config, 'time_limit': drawing.DEFAULT_TIME_LIMIT})
+        self.assertEqual(host.get('/api/drawing/settings').get_json()['settings'], {**config, 'rounds': 1, 'time_limit': drawing.DEFAULT_TIME_LIMIT})
         self.assertEqual(host.get('/api/admin/quizzes').get_json()['active_quiz_id'], quiz['id'])
 
         with host.session_transaction() as credentials:

@@ -1076,6 +1076,13 @@ th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spa
 .dv-time-limit-options input:checked + span { background:var(--ink); color:var(--chalk); box-shadow:4px 4px 0 var(--signal); }
 .dv-time-limit-options input:focus-visible + span { outline:3px solid var(--signal); outline-offset:2px; }
 .dv-time-limit p { margin:10px 0 0; color:var(--faded); }
+.dv-drawing-round-count {
+    margin: 10px 0 0;
+    font-weight: 900;
+}
+.dv-drawing-round-count.is-over-limit {
+    color: var(--signal);
+}
 .dv-drawing-settings-actions {
     display: flex;
     align-items: center;

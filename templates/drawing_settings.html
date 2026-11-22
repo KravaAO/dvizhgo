@@ -16,8 +16,6 @@
     <main class="dv-quiz-builder-shell dv-drawing-settings">
         <h1>Теми Малювалки</h1>
         <form id="drawingSettingsForm" class="dv-builder-panel" action="{{ url_for('drawing.settings_route') }}" method="post">
-            <label for="drawingRounds">Кількість раундів</label>
-            <input id="drawingRounds" name="rounds" type="number" min="1" max="30" value="{{ config.rounds }}" inputmode="numeric" required>
             <fieldset class="dv-time-limit">
                 <legend>Час на малювання одного раунду</legend>
                 <div class="dv-time-limit-options">
@@ -28,8 +26,9 @@
                 <p>Коли час вийде, намальоване надішлеться автоматично.</p>
             </fieldset>
             <label for="drawingPrompts">Теми для малювання</label>
-            <p id="drawingPromptHint">Введіть по одній темі на рядок у порядку раундів.</p>
-            <textarea id="drawingPrompts" name="prompts" rows="8" maxlength="12029" aria-describedby="drawingPromptHint" placeholder="Космічний кіт&#10;Місто майбутнього" required>{{ '\n' }}{{ config.prompts|join('\n') }}</textarea>
+            <p id="drawingPromptHint">Введіть по одній темі на рядок у порядку раундів. Кожна тема — окремий раунд, до {{ max_rounds }}.</p>
+            <textarea id="drawingPrompts" name="prompts" rows="8" maxlength="12029" aria-describedby="drawingPromptHint drawingRoundCount" placeholder="Космічний кіт&#10;Місто майбутнього" required>{{ '\n' }}{{ config.prompts|join('\n') }}</textarea>
+            <p id="drawingRoundCount" class="dv-drawing-round-count" aria-live="polite">Раундів: <output for="drawingPrompts" data-max="{{ max_rounds }}">{{ config.rounds }}</output></p>
             <div class="dv-drawing-settings-actions">
                 <button type="submit" class="primary-btn">Зберегти налаштування</button>
                 <p id="drawingSettingsStatus" role="status"></p>

@@ -39,7 +39,7 @@
                 <a href="{{ url_for('quizzes') }}">Обрати або редагувати квіз →</a>
             </div>
             <div data-room-config="drawing" data-ready="{{ drawing_ready|tojson }}" {% if room_mode != 'drawing' %}hidden{% endif %}>
-                <strong>Раундів · {{ drawing_config.rounds }} / Тем · {{ drawing_config.prompts|length }} / Час · {{ drawing_config.time_limit // 60 }}:{{ '%02d' % (drawing_config.time_limit % 60) }}</strong>
+                <strong>Раундів · {{ drawing_config.rounds }} / Час · {{ drawing_config.time_limit // 60 }}:{{ '%02d' % (drawing_config.time_limit % 60) }}</strong>
                 <a href="{{ url_for('drawing.editor') }}">{% if drawing_ready %}Редагувати теми{% else %}Додати теми для раундів{% endif %} →</a>
             </div>
             <span id="roomModeStatus" role="status" class="dv-room-mode-status"></span>
