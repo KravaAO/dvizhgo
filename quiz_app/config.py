@@ -41,7 +41,7 @@ class Settings:
             shuffle_answers=as_bool(os.getenv("SHUFFLE_ANSWERS"), True),
             shuffle_questions=as_bool(os.getenv("SHUFFLE_QUESTIONS"), False),
             default_locale=os.getenv("DEFAULT_LOCALE", "uk").strip().lower(),
-            lobby_boost_enabled=as_bool(os.getenv("LOBBY_BOOST_ENABLED"), False),
+            lobby_boost_enabled=as_bool(os.getenv("LOBBY_BOOST_ENABLED"), True),
             socketio_message_queue=os.getenv("SOCKETIO_MESSAGE_QUEUE") or None,
             avatar_lab_path=os.getenv("AVATAR_LAB_PATH", "").strip().strip("/"),
             app_environment=os.getenv("APP_ENV", "development").strip().lower(),

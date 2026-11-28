@@ -47,7 +47,7 @@ HEADWEAR_OPTIONS = (
 )
 BOOST_DURATION_SECONDS = 5
 BOOST_COOLDOWN_SECONDS = 15
-LOBBY_BOOST_ACTIVE = True
+LOBBY_BOOST_ACTIVE = settings.lobby_boost_enabled
 DVD_TELEMETRY_SEEN = {}
 FLASH_QUESTION_DEFAULT_SECONDS = 20
 FLASH_QUESTION_MIN_SECONDS = 10
@@ -758,7 +758,12 @@ def lobby():
         return redirect(url_for("activity_stage"))
     if runtime["state"] == "active" and active_attempt and not active_attempt["finished_at"]:
         return redirect(url_for("quiz"))
-    return render_template("lobby.html", room=room, participant_name=participant["display_name"])
+    return render_template(
+        "lobby.html",
+        room=room,
+        participant_name=participant["display_name"],
+        boost_enabled=LOBBY_BOOST_ACTIVE,
+    )
 
 
 @app.get("/lobby/host")
