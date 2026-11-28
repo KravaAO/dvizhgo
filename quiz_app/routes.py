@@ -139,6 +139,7 @@ def build_analytics_summary():
                 "completed_attempts": sum(1 for attempt in room_attempts if attempt["finished_at"]),
                 "duels": type_counts["duel"],
                 "flash_questions": type_counts["flash_question"],
+                "drawings": type_counts["drawing"],
             }
         )
 
@@ -160,6 +161,7 @@ def build_analytics_summary():
             "quiz": activity_types["quiz"],
             "duel": activity_types["duel"],
             "flash_question": activity_types["flash_question"],
+            "drawing": activity_types["drawing"],
         },
         "daily": daily,
         "sessions": sessions,
