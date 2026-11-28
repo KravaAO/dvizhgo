@@ -180,7 +180,9 @@ function reseedMotionAtCurrentTime() {
 
 function stageLayout() {
     const bounds = avatarLayer.getBoundingClientRect();
-    const enabled = window.innerWidth >= DVD_MIN_VIEWPORT_WIDTH
+    const prefersReducedMotion = Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+    const enabled = !prefersReducedMotion
+        && window.innerWidth >= DVD_MIN_VIEWPORT_WIDTH
         && bounds.width > 0
         && bounds.height > 0;
     if (dvdMotionEnabled !== enabled) {
