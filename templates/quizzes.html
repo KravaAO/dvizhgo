@@ -9,7 +9,7 @@
     <script src="{{ url_for('static', filename='js/toast.js') }}"></script>
     <script src="{{ url_for('static', filename='js/room-start.js') }}" defer></script>
 </head>
-<body class="dv-quiz-builder-page">
+<body class="dv-quiz-builder-page" data-room-id="{{ room.id }}">
     <header class="dv-quiz-builder-header">
         <a class="dv-quiz-builder-brand" href="{{ url_for('admin') }}" aria-label="DvizhGO · адмінка"><img src="{{ url_for('static', filename='images/gologo.png') }}" alt="DvizhGO"></a>
         <div class="dv-quiz-builder-room"><span>КІМНАТА / {{ room.code }}</span><strong>{{ room.title }}</strong></div>
@@ -51,6 +51,7 @@
                 <p class="dv-builder-brief-note">Поля підставляються у prompt. Якщо даних бракує, ШІ має спершу поставити уточнювальні питання.</p>
             </div>
             <textarea id="quizJson" class="quiz-json-input" spellcheck="false" placeholder='{"title":"Git basics","questions":[...]}'></textarea>
+            <p id="quizDraftStatus" class="dv-quiz-draft-status" role="status" aria-live="polite">Чернетка зберігається в цьому браузері.</p>
             <div class="modal-actions">
                 <button id="renderQuiz" class="secondary-btn" type="button">Рендер</button>
                 <button id="saveQuiz" class="primary-btn" type="button" disabled>Зберегти квіз</button>
@@ -151,6 +152,10 @@
     let carouselIndex = 0;
     let editingIndex = null;
     let deletingIndex = null;
+    let draggedQuestionIndex = null;
+    let draftSaveTimer = null;
+    let draftDirty = false;
+    const draftStorageKey = `dvQuizDraft:${document.body.dataset.roomId}`;
 
     const escapeHtml = value => String(value).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'})[ch]);
 
@@ -158,9 +163,11 @@
     const previewTitle = () => Array.isArray(previewQuiz) ? 'Новий квіз' : previewQuiz.title || 'Новий квіз';
     const questionTypeLabel = type => ({single: 'одна відповідь', multiple: 'кілька відповідей', true_false: 'так / ні'}[type] || 'одна відповідь');
 
-    function questionCard(question, index) {
-        return `<article class="quiz-preview-item">
-            <div class="dv-question-card-head"><strong>${index + 1}. ${escapeHtml(question.question || '')}</strong><div class="dv-question-card-actions"><button class="secondary-btn" type="button" data-edit-question="${index}">Редагувати</button><button class="dv-delete-question" type="button" data-delete-question="${index}">Видалити</button></div></div>
+    function questionCard(question, index, reorderable = false) {
+        return `<article class="quiz-preview-item" data-question-card="${index}">
+            <div class="dv-question-card-head"><strong>${index + 1}. ${escapeHtml(question.question || '')}</strong><div class="dv-question-card-actions">
+            ${reorderable ? `<div class="dv-question-order-controls"><button class="secondary-btn dv-drag-handle" type="button" draggable="true" data-drag-question="${index}" aria-label="Перетягнути питання ${index + 1}">↕</button><button class="secondary-btn" type="button" data-move-question="${index}" data-direction="-1" aria-label="Перемістити питання ${index + 1} вище" ${index === 0 ? 'disabled' : ''}>↑</button><button class="secondary-btn" type="button" data-move-question="${index}" data-direction="1" aria-label="Перемістити питання ${index + 1} нижче" ${index === previewQuestions().length - 1 ? 'disabled' : ''}>↓</button></div>` : ''}
+            <button class="secondary-btn" type="button" data-duplicate-question="${index}">Дублювати</button><button class="secondary-btn" type="button" data-edit-question="${index}">Редагувати</button><button class="dv-delete-question" type="button" data-delete-question="${index}">Видалити</button></div></div>
             ${question.text ? `<p>${escapeHtml(question.text)}</p>` : ''}
             ${question.code ? `<pre>${escapeHtml(question.code)}</pre>` : ''}
             <span class="dv-question-type dv-question-type-${escapeHtml(question.type || 'single')}">${questionTypeLabel(question.type)}</span>
@@ -182,12 +189,143 @@
             preview.innerHTML = `<button class="dv-carousel-arrow" type="button" data-carousel-step="-1" ${carouselIndex === 0 ? 'disabled' : ''} aria-label="Попереднє питання">←</button><div class="dv-carousel-card">${questionCard(questions[carouselIndex], carouselIndex)}</div><button class="dv-carousel-arrow" type="button" data-carousel-step="1" ${carouselIndex === questions.length - 1 ? 'disabled' : ''} aria-label="Наступне питання">→</button>`;
         } else {
             preview.className = 'quiz-preview';
-            preview.innerHTML = questions.map(questionCard).join('');
+            preview.innerHTML = questions.map((question, index) => questionCard(question, index, true)).join('');
         }
         preview.querySelectorAll('[data-edit-question]').forEach(button => button.addEventListener('click', () => openQuestionEditor(Number(button.dataset.editQuestion))));
         preview.querySelectorAll('[data-delete-question]').forEach(button => button.addEventListener('click', () => openDeleteQuestion(Number(button.dataset.deleteQuestion))));
+        preview.querySelectorAll('[data-duplicate-question]').forEach(button => button.addEventListener('click', () => duplicateQuestion(Number(button.dataset.duplicateQuestion))));
+        preview.querySelectorAll('[data-move-question]').forEach(button => button.addEventListener('click', () => moveQuestion(Number(button.dataset.moveQuestion), Number(button.dataset.moveQuestion) + Number(button.dataset.direction))));
         preview.querySelectorAll('[data-carousel-step]').forEach(button => button.addEventListener('click', () => { carouselIndex += Number(button.dataset.carouselStep); renderPreview(); }));
+        preview.querySelectorAll('[data-drag-question]').forEach(handle => {
+            handle.addEventListener('dragstart', event => {
+                draggedQuestionIndex = Number(handle.dataset.dragQuestion);
+                event.dataTransfer.effectAllowed = 'move';
+                event.dataTransfer.setData('text/plain', String(draggedQuestionIndex));
+                handle.closest('[data-question-card]').classList.add('is-dragging');
+            });
+            handle.addEventListener('dragend', () => {
+                draggedQuestionIndex = null;
+                preview.querySelectorAll('.is-dragging,.is-drop-target').forEach(card => card.classList.remove('is-dragging', 'is-drop-target'));
+            });
+        });
+        preview.querySelectorAll('[data-question-card]').forEach(card => {
+            card.addEventListener('dragover', event => {
+                if (draggedQuestionIndex !== null) event.preventDefault();
+            });
+            card.addEventListener('dragenter', () => {
+                if (draggedQuestionIndex !== null) card.classList.add('is-drop-target');
+            });
+            card.addEventListener('dragleave', () => card.classList.remove('is-drop-target'));
+            card.addEventListener('drop', event => {
+                event.preventDefault();
+                const from = draggedQuestionIndex ?? Number(event.dataTransfer.getData('text/plain'));
+                moveQuestion(from, Number(card.dataset.questionCard));
+            });
+        });
     }
+
+    function moveQuestion(from, to) {
+        const questions = previewQuestions();
+        if (from === to || from < 0 || from >= questions.length || to < 0 || to >= questions.length) return;
+        const [question] = questions.splice(from, 1);
+        questions.splice(to, 0, question);
+        carouselIndex = to;
+        renderPreview();
+        queueDraftSave();
+    }
+
+    function duplicateQuestion(index) {
+        const questions = previewQuestions();
+        const source = questions[index];
+        if (!source) return;
+        const duplicate = {...source, answers: [...(source.answers || [])], correct: [...(source.correct || [])]};
+        delete duplicate.id;
+        questions.splice(index + 1, 0, duplicate);
+        carouselIndex = index + 1;
+        renderPreview();
+        queueDraftSave();
+        showToast('Питання продубльовано.', {type: 'success'});
+    }
+
+    function persistDraft() {
+        const rawJson = document.getElementById('quizJson').value;
+        const hasContent = rawJson.trim() || previewQuiz;
+        if (!hasContent) {
+            localStorage.removeItem(draftStorageKey);
+            document.getElementById('quizDraftStatus').textContent = 'Немає незбереженої чернетки.';
+            return;
+        }
+        localStorage.setItem(draftStorageKey, JSON.stringify({
+            rawJson,
+            topic: document.getElementById('quizTopic').value,
+            questionCount: document.getElementById('quizQuestionCount').value,
+            previewQuiz,
+            previewView,
+            updatedAt: new Date().toISOString(),
+        }));
+        const savedAt = new Date().toLocaleTimeString('uk-UA', {hour: '2-digit', minute: '2-digit'});
+        document.getElementById('quizDraftStatus').textContent = `Чернетку збережено о ${savedAt}`;
+    }
+
+    function queueDraftSave() {
+        draftDirty = true;
+        if (previewQuiz) document.getElementById('saveQuiz').disabled = false;
+        window.clearTimeout(draftSaveTimer);
+        document.getElementById('quizDraftStatus').textContent = 'Зберігаємо чернетку…';
+        draftSaveTimer = window.setTimeout(() => {
+            try {
+                persistDraft();
+            } catch (error) {
+                console.error(error);
+                document.getElementById('quizDraftStatus').textContent = 'Не вдалося зберегти чернетку в цьому браузері.';
+                showToast('Не вдалося зберегти чернетку. Перевірте вільне місце браузера.', {type: 'error'});
+            }
+        }, 400);
+    }
+
+    function restoreDraft() {
+        try {
+            const serialized = localStorage.getItem(draftStorageKey);
+            if (!serialized) return;
+            const draft = JSON.parse(serialized);
+            if (!draft || typeof draft !== 'object') throw new Error('Невідомий формат чернетки.');
+            draftDirty = true;
+            document.getElementById('quizJson').value = typeof draft.rawJson === 'string' ? draft.rawJson : '';
+            document.getElementById('quizTopic').value = typeof draft.topic === 'string' ? draft.topic : '';
+            if (draft.questionCount !== undefined) document.getElementById('quizQuestionCount').value = draft.questionCount;
+            if (draft.previewQuiz && (Array.isArray(draft.previewQuiz) || Array.isArray(draft.previewQuiz.questions))) {
+                previewQuiz = draft.previewQuiz;
+                previewView = draft.previewView === 'carousel' ? 'carousel' : 'list';
+                document.getElementById('quizPreviewPanel').classList.remove('hidden');
+                document.getElementById('saveQuiz').disabled = false;
+                renderPreview();
+            }
+            document.getElementById('quizDraftStatus').textContent = 'Відновлено незбережену чернетку з цього браузера.';
+        } catch (error) {
+            console.error(error);
+            document.getElementById('quizDraftStatus').textContent = 'Не вдалося відновити чернетку.';
+            showToast('Не вдалося відновити чернетку квіза.', {type: 'error'});
+        }
+    }
+
+    document.getElementById('quizJson').addEventListener('input', () => {
+        previewQuiz = null;
+        document.getElementById('quizPreviewPanel').classList.add('hidden');
+        document.getElementById('saveQuiz').disabled = true;
+        queueDraftSave();
+    });
+    document.getElementById('quizTopic').addEventListener('input', queueDraftSave);
+    document.getElementById('quizQuestionCount').addEventListener('input', queueDraftSave);
+    window.addEventListener('pagehide', () => {
+        window.clearTimeout(draftSaveTimer);
+        if (!draftDirty) return;
+        try {
+            persistDraft();
+        } catch (error) {
+            console.error(error);
+        }
+    });
+    restoreDraft();
 
     async function loadLibrary() {
         const res = await fetch('/api/admin/quizzes');
@@ -233,10 +371,12 @@
             renderPreview();
             document.getElementById('quizPreviewPanel').classList.remove('hidden');
             document.getElementById('saveQuiz').disabled = false;
+            queueDraftSave();
             showToast('Квіз відрендерено. Тепер його можна зберегти.', {type: 'success'});
         } catch (error) {
             previewQuiz = null;
             document.getElementById('saveQuiz').disabled = true;
+            queueDraftSave();
             showToast(`Не вдалося прочитати JSON: ${error.message}`, {type: 'error'});
         }
     });
@@ -314,6 +454,7 @@
         carouselIndex = Math.min(carouselIndex, questions.length - 1);
         closeDeleteQuestion();
         renderPreview();
+        queueDraftSave();
         showToast('Завдання видалено. Збережіть квіз, коли завершите.', {type: 'success'});
     });
     document.getElementById('questionEditorForm').addEventListener('submit', event => {
@@ -336,10 +477,11 @@
         carouselIndex = editingIndex === null ? questions.length - 1 : editingIndex;
         closeQuestionEditor();
         renderPreview();
+        queueDraftSave();
         showToast('Питання оновлено. Збережіть квіз, коли завершите.', {type: 'success'});
     });
-    document.getElementById('listPreview').addEventListener('click', () => { previewView = 'list'; localStorage.setItem('dvQuizPreviewView', previewView); renderPreview(); });
-    document.getElementById('carouselPreview').addEventListener('click', () => { previewView = 'carousel'; localStorage.setItem('dvQuizPreviewView', previewView); renderPreview(); });
+    document.getElementById('listPreview').addEventListener('click', () => { previewView = 'list'; localStorage.setItem('dvQuizPreviewView', previewView); renderPreview(); queueDraftSave(); });
+    document.getElementById('carouselPreview').addEventListener('click', () => { previewView = 'carousel'; localStorage.setItem('dvQuizPreviewView', previewView); renderPreview(); queueDraftSave(); });
     document.getElementById('addQuestion').addEventListener('click', () => openQuestionEditor());
 
     document.getElementById('saveQuiz').addEventListener('click', async () => {
@@ -348,6 +490,16 @@
         const data = await res.json().catch(() => ({}));
         if (!res.ok) return showToast(data.error || 'Не вдалося зберегти квіз.', {type: 'error'});
         showToast(`Квіз «${data.title}» збережено. Оберіть його у бібліотеці.`, {type: 'success'});
+        window.clearTimeout(draftSaveTimer);
+        draftDirty = false;
+        try {
+            localStorage.removeItem(draftStorageKey);
+            document.getElementById('quizDraftStatus').textContent = 'Квіз збережено. Чернетку очищено.';
+        } catch (error) {
+            console.error(error);
+            document.getElementById('quizDraftStatus').textContent = 'Квіз збережено, але локальну чернетку не вдалося очистити.';
+            showToast('Квіз збережено, але чернетку в браузері не вдалося очистити.', {type: 'error'});
+        }
         document.getElementById('quizJson').value = '';
         document.getElementById('saveQuiz').disabled = true;
         loadLibrary();
