@@ -107,15 +107,26 @@ class RoomFirstRuntimeTest(unittest.TestCase):
         self.assertEqual(second_participant.post("/join", data={"name": "Дані", "code": room_code}).status_code, 302)
         self.assertEqual(host.post("/api/lobby/start", json={"mode": "self_paced"}).status_code, 200)
         self.assertEqual(host.post("/api/admin/roulette", json={"question": "Тестова активність"}).status_code, 201)
+        conn = server.get_db()
+        now = server.now_iso()
+        conn.execute(
+            "INSERT INTO activities (room_id, type, status, config_json, started_at, finished_at) "
+            "VALUES (?, 'drawing', 'finished', '{}', ?, ?)",
+            (room_id, now, now),
+        )
+        conn.commit()
+        conn.close()
 
         analytics = server.build_analytics_summary()
         self.assertEqual(analytics["totals"]["rooms_created"], 1)
         self.assertEqual(analytics["totals"]["quizzes_started"], 1)
-        self.assertEqual(analytics["totals"]["activities_started"], 2)
+        self.assertEqual(analytics["totals"]["activities_started"], 3)
         self.assertEqual(analytics["activity_types"]["duel"], 1)
+        self.assertEqual(analytics["activity_types"]["drawing"], 1)
         self.assertEqual(analytics["sessions"][0]["participants"], 2)
         self.assertEqual(analytics["sessions"][0]["quizzes_started"], 1)
         self.assertEqual(analytics["sessions"][0]["duels"], 1)
+        self.assertEqual(analytics["sessions"][0]["drawings"], 1)
 
     def test_private_analytics_requires_code_before_showing_history(self):
         original_path = server.settings.analytics_path
