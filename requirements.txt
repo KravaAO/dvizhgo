@@ -3,4 +3,5 @@ Flask-SocketIO>=5.5,<6
 gunicorn>=23,<24
 psycopg[binary]>=3.2,<4
 redis>=5.2,<7
+qrcode>=8.2,<9
 simple-websocket>=1.1,<2

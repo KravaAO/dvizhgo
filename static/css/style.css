@@ -1674,6 +1674,8 @@ th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spa
 .dv-lobby-tools .dv-icon:focus-visible,.dv-copy:focus-visible,.dv-start:focus-visible,.dv-drawer .dv-icon:focus-visible { outline:3px solid var(--signal); outline-offset:3px; }
 .dv-room-panel { gap:28px; }
 .dv-room-share { max-width:440px; }
+.dv-room-qr { display:flex; align-items:center; gap:14px; margin:16px 0; font:800 10px/1.35 "Courier New",monospace; letter-spacing:.08em; text-transform:uppercase; }
+.dv-room-qr img { display:block; width:160px; height:160px; padding:8px; border:2px solid var(--ink); background:#fff; }
 .dv-room-share-actions { display:flex; flex-wrap:wrap; gap:10px; }
 .dv-room-share-actions .dv-copy { flex:1 1 140px; min-height:46px; }
 .dv-room-code { width:max-content; max-width:100%; margin-top:14px; padding:7px 10px 12px; border-bottom:4px solid var(--signal); font-variant-numeric:tabular-nums; letter-spacing:.02em; }

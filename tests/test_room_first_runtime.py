@@ -142,6 +142,16 @@ class RoomFirstRuntimeTest(unittest.TestCase):
             object.__setattr__(server.settings, "analytics_path", original_path)
             object.__setattr__(server.settings, "analytics_access_code", original_code)
 
+    def test_host_lobby_renders_a_self_hosted_room_invite_qr(self):
+        host = server.app.test_client()
+        self.assertEqual(host.post("/rooms").status_code, 302)
+
+        page = host.get("/lobby/host")
+
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b"data:image/svg+xml;base64,", page.data)
+        self.assertIn("alt=\"QR-код для входу до кімнати".encode(), page.data)
+
     def test_presence_uses_heartbeat_and_not_just_left_at(self):
         host = server.app.test_client()
         host.post("/rooms")
