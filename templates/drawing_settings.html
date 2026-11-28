@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Теми Малювалки · {{ room.title }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="{{ url_for('static', filename='js/page-transitions.js') }}"></script>
+</head>
+<body class="dv-quiz-builder-page">
+    <header class="dv-quiz-builder-header">
+        <a class="dv-quiz-builder-brand" href="{{ url_for('host_lobby') }}" aria-label="DvizhGO · лобі"><img src="{{ url_for('static', filename='images/gologo.png') }}" alt="DvizhGO"></a>
+        <div class="dv-quiz-builder-room"><span>КІМНАТА / {{ room.code }}</span><strong>{{ room.title }}</strong></div>
+        <div class="dv-quiz-builder-actions"><a href="{{ url_for('host_lobby') }}">← Назад у лобі</a></div>
+    </header>
+    <main class="dv-quiz-builder-shell dv-drawing-settings">
+        <h1>Теми Малювалки</h1>
+        <form id="drawingSettingsForm" class="dv-builder-panel" action="{{ url_for('drawing.settings_route') }}" method="post">
+            <fieldset class="dv-time-limit">
+                <legend>Час на малювання одного раунду</legend>
+                <div class="dv-time-limit-options">
+                    {% for seconds in time_limit_options %}
+                    <label><input type="radio" name="time_limit" value="{{ seconds }}" {% if seconds == config.time_limit %}checked{% endif %}><span>{% if seconds < 60 %}{{ seconds }} с{% elif seconds % 60 %}{{ seconds // 60 }},5 хв{% else %}{{ seconds // 60 }} хв{% endif %}</span></label>
+                    {% endfor %}
+                </div>
+                <p>Коли час вийде, намальоване надішлеться автоматично.</p>
+            </fieldset>
+            <label for="drawingPrompts">Теми для малювання</label>
+            <p id="drawingPromptHint">Введіть по одній темі на рядок у порядку раундів. Кожна тема — окремий раунд, до {{ max_rounds }}.</p>
+            <textarea id="drawingPrompts" name="prompts" rows="8" maxlength="12029" aria-describedby="drawingPromptHint drawingRoundCount" placeholder="Космічний кіт&#10;Місто майбутнього" required>{{ '\n' }}{{ config.prompts|join('\n') }}</textarea>
+            <p id="drawingRoundCount" class="dv-drawing-round-count" aria-live="polite">Раундів: <output for="drawingPrompts" data-max="{{ max_rounds }}">{{ config.rounds }}</output></p>
+            <div class="dv-drawing-settings-actions">
+                <button type="submit" class="primary-btn">Зберегти налаштування</button>
+                <p id="drawingSettingsStatus" role="status"></p>
+            </div>
+        </form>
+    </main>
+    <script src="{{ url_for('static', filename='js/drawing-settings.js') }}"></script>
+</body>
+</html>

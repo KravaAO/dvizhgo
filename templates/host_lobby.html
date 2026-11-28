@@ -9,11 +9,11 @@
     <script src="{{ url_for('static', filename='js/leave-modal.js') }}"></script>
 </head>
 <body class="lobby-page dv-lobby dv-lobby-page" data-host="true">
-<div class="dv-lobby-layout">
+<div class="dv-lobby-layout dv-host-lobby-layout">
     <header class="dv-lobby-header">
         <div class="dv-logo"><img class="dv-brand-image" src="{{ url_for('static', filename='images/gologo.png') }}" alt="DvizhGO"></div>
         <div class="dv-lobby-state"><span aria-hidden="true"></span>Лобі відкрите</div>
-        <div class="dv-lobby-tools"><button id="copyRoomCode" class="dv-icon" type="button" aria-label="Скопіювати код кімнати" title="Скопіювати код">↗</button><button id="openRoomSettings" class="dv-icon" type="button" aria-label="Відкрити налаштування кімнати" aria-expanded="false" title="Налаштування">⚙</button><form action="{{ url_for('admin_logout') }}" method="post" data-confirm-leave><button class="dv-icon" aria-label="Вийти з кімнати" title="Вийти" type="submit">×</button></form></div>
+        <div class="dv-lobby-tools"><button id="copyRoomCode" class="dv-icon" type="button" aria-label="Скопіювати код кімнати" title="Скопіювати код">↗</button><form action="{{ url_for('admin_logout') }}" method="post" data-confirm-leave><button class="dv-icon" aria-label="Вийти з кімнати" title="Вийти" type="submit">×</button></form></div>
     </header>
     <main class="dv-lobby-main">
         <aside class="dv-room-panel">
@@ -25,28 +25,37 @@
             <div class="dv-arena-wrap"><div id="dvdAvatars" class="dvd-stage dv-arena"><div class="dv-arena-label">ЛОБІ / ПЕРСОНАЖІ УЧАСНИКІВ</div><div class="dv-dvd-disabled"><strong>Аватари з’являться тут</strong><span>Рухома сцена доступна на ширшому екрані</span></div></div><div class="dv-peek" aria-hidden="true">😎</div></div>
         </section>
     </main>
-    <footer class="dv-lobby-footer"><span>Очікуємо учасників · {{ room.title }}</span><button id="startQuiz" class="dv-start" type="button">Почати — дати завдання →</button></footer>
+    <footer class="dv-lobby-footer dv-host-lobby-controls" id="roomControls" data-mode="{{ room_mode }}" data-save-url="{{ url_for('save_room_mode') }}">
+        <fieldset id="roomModes" class="dv-room-modes">
+            <legend>Режим кімнати</legend>
+            <div class="dv-room-mode-options">
+                <label><input type="radio" name="room_mode" value="quiz" {% if room_mode == 'quiz' %}checked{% endif %}><span>Квіз</span></label>
+                <label><input type="radio" name="room_mode" value="drawing" {% if room_mode == 'drawing' %}checked{% endif %}><span>Малювалка</span></label>
+            </div>
+        </fieldset>
+        <div class="dv-room-configuration">
+            <div data-room-config="quiz" {% if room_mode != 'quiz' %}hidden{% endif %}>
+                <strong>{{ quiz_title }}</strong>
+                <a href="{{ url_for('quizzes') }}">Обрати або редагувати квіз →</a>
+            </div>
+            <div data-room-config="drawing" data-ready="{{ drawing_ready|tojson }}" {% if room_mode != 'drawing' %}hidden{% endif %}>
+                <strong>Раундів · {{ drawing_config.rounds }} / Час · {{ drawing_config.time_limit // 60 }}:{{ '%02d' % (drawing_config.time_limit % 60) }}</strong>
+                <a href="{{ url_for('drawing.editor') }}">{% if drawing_ready %}Редагувати теми{% else %}Додати теми для раундів{% endif %} →</a>
+            </div>
+            <span id="roomModeStatus" role="status" class="dv-room-mode-status"></span>
+        </div>
+        <button id="startRoom" class="dv-start" type="button" data-start-url="{{ url_for('start_lobby_activity') }}" {% if room_mode == 'drawing' and not drawing_ready %}disabled{% endif %}>{{ 'Почати Малювалку' if room_mode == 'drawing' else 'Почати квіз' }}</button>
+    </footer>
 </div>
-<aside id="roomSettingsDrawer" class="dv-drawer" aria-hidden="true" inert>
-    <div class="dv-drawer-head"><span class="dv-micro">НАЛАШТУВАННЯ КІМНАТИ</span><button id="closeRoomSettings" class="dv-icon" type="button" aria-label="Закрити налаштування">×</button></div>
-    <h2>Налаштування<br>кімнати</h2>
-    <label>Режим проходження<select id="roomMode" data-custom-select><option value="self_paced">Самостійно</option><option value="live">Live</option></select></label>
-    <a class="dv-drawer-link" href="{{ url_for('quizzes') }}">Редагувати / обрати квіз →</a>
-    <p class="dv-drawer-note">Спершу підготуйте квіз. Після «Почати» всі учасники в лобі перейдуть до завдань.</p>
-    <button class="dv-disabled-control" disabled>Активності / soon</button><button class="dv-disabled-control" disabled>Редагування кімнати / soon</button>
-</aside>
 <script>
 const roomCode = {{ room.code|tojson }};
 const inviteUrl = new URL("{{ url_for('index') }}", window.location.origin);
 inviteUrl.searchParams.set('code', roomCode);
 document.querySelectorAll('#copyRoomCode,#copyRoomCodeWide').forEach(button => button.addEventListener('click', async () => { try { await navigator.clipboard.writeText(roomCode); showToast('Код кімнати скопійовано.', {type:'success'}); } catch { showToast('Не вдалося скопіювати код.', {type:'error'}); }}));
 document.getElementById('copyRoomLink').addEventListener('click', async () => { try { await navigator.clipboard.writeText(inviteUrl.href); showToast('Посилання для входу скопійовано.', {type:'success'}); } catch { showToast('Не вдалося скопіювати посилання.', {type:'error'}); }});
-const drawer=document.getElementById('roomSettingsDrawer'), settingsButton=document.getElementById('openRoomSettings');
-function setDrawerOpen(open){drawer.classList.toggle('open',open);drawer.setAttribute('aria-hidden',String(!open));drawer.inert=!open;settingsButton.setAttribute('aria-expanded',String(open));if(open)document.getElementById('closeRoomSettings').focus();else settingsButton.focus();}
-settingsButton.onclick=()=>setDrawerOpen(true); document.getElementById('closeRoomSettings').onclick=()=>setDrawerOpen(false);
-document.addEventListener('keydown',event=>{if(event.key==='Escape'&&drawer.classList.contains('open'))setDrawerOpen(false)});
 </script>
-<script src="{{ url_for('static', filename='js/select.js') }}"></script>
+<script src="{{ url_for('static', filename='js/room-start.js') }}"></script>
+<script src="{{ url_for('static', filename='js/room-mode.js') }}"></script>
 <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
 <script src="{{ url_for('static', filename='js/room-socket.js') }}"></script>
 <script src="{{ url_for('static', filename='js/lobby.js') }}"></script>

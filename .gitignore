@@ -74,6 +74,10 @@ quiz.db-wal
 # Sphinx documentation
 docs/_build/
 
+# Local video assets, including static/video/dvizhgo-guide.mp4
+/static/video/*
+!/static/video/.gitkeep
+
 # PyBuilder
 .pybuilder/
 target/

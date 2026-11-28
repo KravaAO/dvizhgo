@@ -401,6 +401,7 @@ async function pollLobby() {
         const data = await response.json();
         clockOffset = Date.parse(data.server_time) - Date.now();
         viewerId = data.viewer_id;
+        if (data.current_activity_type === 'drawing') { window.dvNavigate('/drawing'); return; }
         if (['duel', 'flash_question'].includes(data.current_activity_type) && !isHost) { window.dvNavigate('/activity'); return; }
         if (data.status === 'active' && data.has_active_attempt && !isHost) { window.dvNavigate('/quiz'); return; }
         resetScene(data.participants, data.boosts);
@@ -556,26 +557,9 @@ if (removeHeadwearButton) {
     });
 }
 
-if (isHost) {
-    document.getElementById('startQuiz').addEventListener('click', async () => {
-        const button = document.getElementById('startQuiz');
-        if (button.disabled) return;
-        button.disabled = true;
-        for (let seconds = 3; seconds > 0; seconds -= 1) {
-            button.textContent = `Старт через ${seconds}…`;
-            await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-        const response = await fetch('/api/lobby/start', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({mode: document.getElementById('roomMode').value})});
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) { button.disabled = false; button.textContent = 'Почати — дати завдання →'; return showToast(data.error || 'Не вдалося розпочати квіз.', {type: 'error'}); }
-        button.textContent = 'Квіз розпочато';
-        showToast('Учасники отримали завдання.', {type: 'success'});
-        window.dvNavigate('/admin');
-    });
-}
-
 connectRoomSocket({
     state(state) {
+        if (state.activity_type === 'drawing') { window.dvNavigate('/drawing'); return; }
         if (isHost && state.room_status !== 'lobby') {
             window.dvNavigate('/admin');
             return;

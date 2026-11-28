@@ -7,12 +7,16 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <script src="{{ url_for('static', filename='js/page-transitions.js') }}"></script>
     <script src="{{ url_for('static', filename='js/toast.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/room-start.js') }}" defer></script>
 </head>
 <body class="dv-quiz-builder-page">
     <header class="dv-quiz-builder-header">
         <a class="dv-quiz-builder-brand" href="{{ url_for('admin') }}" aria-label="DvizhGO · адмінка"><img src="{{ url_for('static', filename='images/gologo.png') }}" alt="DvizhGO"></a>
         <div class="dv-quiz-builder-room"><span>КІМНАТА / {{ room.code }}</span><strong>{{ room.title }}</strong></div>
-        <div class="dv-quiz-builder-actions"><a href="{{ url_for('host_lobby') }}">← Назад у лобі</a><button id="startFromQuizzes" type="button">Почати квіз</button></div>
+        <div class="dv-quiz-builder-actions">
+            <a id="quizLobbyLink" href="{{ url_for('host_lobby') }}">{{ '← Змінити режим у лобі' if room_mode == 'drawing' else '← Назад у лобі' }}</a>
+            <button id="startFromQuizzes" type="button" data-start-url="{{ url_for('start_lobby_activity') }}" {% if room_mode != 'quiz' %}hidden{% endif %}>Почати квіз</button>
+        </div>
     </header>
 
     <main class="dv-quiz-builder-shell">
@@ -353,25 +357,15 @@
     document.getElementById('startFromQuizzes').addEventListener('click', async event => {
         const button = event.currentTarget;
         if (button.disabled) return;
-        button.disabled = true;
-        for (let seconds = 3; seconds > 0; seconds -= 1) {
-            button.textContent = `Старт через ${seconds}…`;
-            await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-        let res;
         try {
-            res = await fetch('/api/lobby/start', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({mode: 'self_paced'})});
-        } catch {
-            button.disabled = false;
-            button.textContent = 'Почати квіз';
-            showToast('Не вдалося з’єднатися із сервером. Перевірте з’єднання та спробуйте ще раз.', {type:'error'});
-            return;
+            await launchRoomActivity(button, 'quiz');
+        } catch (error) {
+            if (error.roomMode === 'drawing') {
+                button.hidden = true;
+                document.getElementById('quizLobbyLink').textContent = '← Змінити режим у лобі';
+            }
+            showToast(error.message, {type:'error'});
         }
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) { button.disabled = false; button.textContent = 'Почати квіз'; return showToast(data.error || 'Не вдалося почати квіз.', {type:'error'}); }
-        button.textContent = 'Квіз розпочато';
-        showToast('Учасники отримали завдання.', {type:'success'});
-        window.dvNavigate('/admin');
     });
     </script>
 </body>
