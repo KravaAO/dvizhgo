@@ -17,7 +17,7 @@
     </header>
     <main class="dv-lobby-main">
         <aside class="dv-room-panel">
-            <div class="dv-room-share"><div class="dv-micro">ЗАПРОСІТЬ ГРУПУ</div><div class="dv-room-code" aria-label="Код кімнати {{ room.code }}">{{ room.code }}</div><p class="dv-room-url">Надішліть посилання для швидкого входу або окремо скопіюйте код.</p><div class="dv-room-share-actions"><button id="copyRoomCodeWide" class="dv-copy" type="button">Скопіювати код</button><button id="copyRoomLink" class="dv-copy" type="button">Скопіювати посилання</button></div></div>
+            <div class="dv-room-share"><div class="dv-micro">ЗАПРОСІТЬ ГРУПУ</div><div class="dv-room-code" aria-label="Код кімнати {{ room.code }}">{{ room.code }}</div><p class="dv-room-url">Відскануйте QR-код або скопіюйте посилання чи код кімнати.</p><div class="dv-room-qr"><img src="{{ room_qr_data_url }}" width="160" height="160" alt="QR-код для входу до кімнати {{ room.code }}"><span>Наведіть камеру телефона</span></div><div class="dv-room-share-actions"><button id="copyRoomCodeWide" class="dv-copy" type="button">Скопіювати код</button><button id="copyRoomLink" class="dv-copy" type="button">Скопіювати посилання</button></div></div>
             <div class="dv-host-block"><div><div class="dv-micro">ROOM HOST</div><strong>{{ room.title }}</strong></div><span>LOBBY</span></div>
         </aside>
         <section class="dv-stage">

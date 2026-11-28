@@ -1,10 +1,14 @@
+import base64
 import json
 import random
 import logging
+from io import BytesIO
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 from hmac import compare_digest
 
+import qrcode
+from qrcode.image.svg import SvgPathImage
 from flask import (
     jsonify, redirect, render_template,
     request, session, url_for
@@ -262,6 +266,20 @@ def get_current_host_room():
     room = find_host_room(conn, session.get("host_room_id"), session.get("host_access_token"))
     conn.close()
     return room
+
+
+def room_invite_qr_data_url(invite_url):
+    qr = qrcode.QRCode(
+        error_correction=qrcode.constants.ERROR_CORRECT_M,
+        box_size=6,
+        border=4,
+    )
+    qr.add_data(invite_url)
+    qr.make(fit=True)
+    image = qr.make_image(image_factory=SvgPathImage)
+    svg = BytesIO()
+    image.save(svg)
+    return "data:image/svg+xml;base64," + base64.b64encode(svg.getvalue()).decode("ascii")
 
 
 ROOM_MODES = ("quiz", "drawing")
@@ -796,10 +814,12 @@ def host_lobby():
     finally:
         conn.close()
     drawing_config = drawing.saved_settings(room_settings)
+    invite_url = url_for("index", code=room["code"], _external=True)
     page = render_template(
         "host_lobby.html", room=room, room_mode=selected_room_mode(room_settings),
         quiz_title=quiz_title, drawing_config=drawing_config,
         drawing_ready=drawing.settings_ready(drawing_config),
+        room_qr_data_url=room_invite_qr_data_url(invite_url),
     )
     return page, 200, {"Cache-Control": "no-store"}
 
