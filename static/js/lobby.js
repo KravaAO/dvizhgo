@@ -408,16 +408,19 @@ async function pollLobby() {
         const currentParticipant = data.participants.find(participant => String(participant.id) === String(viewerId));
         if (currentParticipant) updateAvatarPicker(currentParticipant.appearance);
         lobbyCount.textContent = `${data.participants.length} учасник${data.participants.length === 1 ? '' : data.participants.length < 5 ? 'и' : 'ів'} у лобі`;
-        if (data.boost_enabled) {
-            latestBoost = data.boosts[String(data.viewer_id)] || null;
-            updateBoostButton(latestBoost);
-        }
+        latestBoost = data.boosts[String(data.viewer_id)] || null;
+        updateBoostButton(latestBoost, data.boost_enabled);
     } catch (error) { console.error(error); }
 }
 
-function updateBoostButton(boost) {
+function updateBoostButton(boost, enabled = true) {
     const button = document.getElementById('boostButton');
     if (!button) return;
+    if (!enabled) {
+        button.disabled = true;
+        button.textContent = '⚡ Буст недоступний';
+        return;
+    }
     const cooldown = boost?.cooldown_seconds || 0;
     button.disabled = cooldown > 0;
     button.textContent = cooldown ? `⚡ Буст · ${cooldown}с` : '⚡ Буст';
@@ -468,11 +471,27 @@ window.setInterval(() => {
 const boostButton = document.getElementById('boostButton');
 if (boostButton) {
     boostButton.addEventListener('click', async () => {
-        const response = await fetch('/api/lobby/boost', {method: 'POST'});
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) return showToast(data.error || 'Буст не спрацював.', {type: 'error'});
-        showToast('⚡ Буст увімкнено на 5 секунд!', {type: 'success'});
-        pollLobby();
+        if (boostButton.disabled) return;
+        boostButton.disabled = true;
+        boostButton.textContent = '⚡ Активуємо…';
+        try {
+            const response = await fetch('/api/lobby/boost', {method: 'POST'});
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                showToast(data.error || 'Буст не спрацював.', {type: 'error'});
+                await pollLobby();
+                return;
+            }
+            latestBoost = data.boost || latestBoost;
+            sceneBoosts[String(viewerId)] = latestBoost;
+            updateBoostButton(latestBoost, true);
+            showToast('⚡ Буст увімкнено на 5 секунд!', {type: 'success'});
+            await pollLobby();
+        } catch (error) {
+            console.error(error);
+            showToast('Не вдалося увімкнути буст.', {type: 'error'});
+            await pollLobby();
+        }
     });
 }
 
